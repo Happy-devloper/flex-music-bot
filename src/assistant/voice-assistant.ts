@@ -768,6 +768,8 @@ async function prepareAudioFile(query: string): Promise<string> {
   const workDir = mkdtempSync(path.join(VOICE_CACHE_DIR, 'track-'));
   const outputTemplate = path.join(workDir, 'source.%(ext)s');
   const source = isHttpUrl(query) ? query : `ytsearch1:${query}`;
+  console.log("Query:", query);
+console.log("Source:", source);
 
 await runProcess(resolveYtDlpPath(), [
   '--cookies',
