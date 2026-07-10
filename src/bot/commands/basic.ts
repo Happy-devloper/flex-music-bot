@@ -89,7 +89,8 @@ export function registerBasicCommands(bot: Bot): void {
 
     const result = await voiceAssistant.play(ctx.chat.id, query);
     await deleteCommandMessage(ctx);
-    await ctx.reply(formatPlayPanel(result, query), {
+    await ctx.reply(formatPlayPanel(result, query, ctx.from), {
+      parse_mode: 'HTML',
       reply_markup: createPlaybackMenu()
     });
   });
@@ -198,6 +199,14 @@ export function registerBasicCommands(bot: Bot): void {
     }
   });
 
+  bot.callbackQuery('music:stop', async (ctx) => {
+    await ctx.answerCallbackQuery();
+
+    if (ctx.chat) {
+      await ctx.reply((await voiceAssistant.leave(ctx.chat.id)).message);
+    }
+  });
+
   bot.callbackQuery('music:previous', async (ctx) => {
     await ctx.answerCallbackQuery('Previous track is not available yet.');
   });
@@ -249,37 +258,45 @@ function createMusicMenu(): InlineKeyboard {
 
 function createPlaybackMenu(): InlineKeyboard {
   return new InlineKeyboard()
-    .text('Previous', 'music:previous')
-    .text('Pause', 'music:pause')
-    .text('Skip', 'music:skip')
+    .text('▷', 'music:previous')
+    .text('Ⅱ', 'music:pause')
+    .text('↻', 'music:resume')
+    .text('▷Ⅱ', 'music:skip')
+    .text('□', 'music:stop')
     .row()
-    .text('Resume', 'music:resume')
     .text('Queue', 'music:queue')
     .text('Menu', 'music:play_help');
 }
 
 function formatPlayPanel(
   result: Awaited<ReturnType<typeof voiceAssistant.play>>,
-  fallbackQuery: string
+  fallbackQuery: string,
+  requester?: Context['from']
 ): string {
+  const title = escapeHtml(result.query ?? fallbackQuery);
+  const requestedBy = formatRequester(requester);
+
   if (result.status === 'playing') {
     return [
-      'Now playing:',
-      result.query ?? fallbackQuery,
-      `Runtime: ${formatDuration(result.durationSeconds)}`
+      '♫ <b>Started streaming</b>',
+      '',
+      `▷ <b>Title:</b> ${title}`,
+      `◷ <b>Duration:</b> ${formatDuration(result.durationSeconds)} min`,
+      `♧ <b>Requested by:</b> ${requestedBy}`
     ].join('\n');
   }
 
   if (result.status === 'queued') {
     return [
-      'Queued:',
-      result.query ?? fallbackQuery,
-      `Position: ${result.position ?? '-'}`,
-      'It is downloading in the background.'
+      '♫ <b>Added to queue</b>',
+      '',
+      `▷ <b>Title:</b> ${title}`,
+      `⌁ <b>Position:</b> ${result.position ?? '-'}`,
+      `♧ <b>Requested by:</b> ${requestedBy}`
     ].join('\n');
   }
 
-  return result.message;
+  return escapeHtml(result.message);
 }
 
 function formatDuration(seconds?: number): string {
@@ -298,6 +315,23 @@ async function deleteCommandMessage(ctx: Context): Promise<void> {
   } catch {
     // The bot can only delete user commands when it has delete-message permission.
   }
+}
+
+function formatRequester(user?: Context['from']): string {
+  if (!user) {
+    return 'Unknown';
+  }
+
+  const name = escapeHtml(user.first_name);
+  return `<a href="tg://user?id=${user.id}">${name}</a>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 }
 
 export async function registerBotCommands(bot: Bot): Promise<void> {
