@@ -770,7 +770,7 @@ async function prepareAudioFile(query: string): Promise<string> {
   const source = isHttpUrl(query) ? query : `ytsearch1:${query}`;
 
   try {
-    await runProcess(resolveYtDlpPath(), [
+    const ytDlpArgs = [
       '--no-playlist',
       '--force-ipv4',
       '--extractor-args',
@@ -778,9 +778,16 @@ async function prepareAudioFile(query: string): Promise<string> {
       '-f',
       'ba[ext=m4a]/ba/bestaudio/best',
       '-o',
-      outputTemplate,
-      source
-    ]);
+      outputTemplate
+    ];
+
+    if (config.ytDlpCookies) {
+      ytDlpArgs.push('--cookies-from-browser', config.ytDlpCookies);
+    }
+
+    ytDlpArgs.push(source);
+
+    await runProcess(resolveYtDlpPath(), ytDlpArgs);
 
     const downloaded = readdirSync(workDir)
       .map((file) => path.join(workDir, file))
