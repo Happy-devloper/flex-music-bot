@@ -781,9 +781,21 @@ async function prepareAudioFile(query: string): Promise<string> {
       outputTemplate
     ];
 
+    // Add cookies if configured
     if (config.ytDlpCookies) {
-      ytDlpArgs.push('--cookies-from-browser', config.ytDlpCookies);
+      // Check if it's a file path (contains / or \) or a browser name
+      if (config.ytDlpCookies.includes('/') || config.ytDlpCookies.includes('\\')) {
+        ytDlpArgs.push('--cookies', config.ytDlpCookies);
+      } else {
+        ytDlpArgs.push('--cookies-from-browser', config.ytDlpCookies);
+      }
     }
+
+    // Add additional fallback strategies to avoid bot detection
+    ytDlpArgs.push(
+      '--user-agent',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    );
 
     ytDlpArgs.push(source);
 
