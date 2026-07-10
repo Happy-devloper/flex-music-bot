@@ -769,18 +769,19 @@ async function prepareAudioFile(query: string): Promise<string> {
   const outputTemplate = path.join(workDir, 'source.%(ext)s');
   const source = isHttpUrl(query) ? query : `ytsearch1:${query}`;
 
-  try {
-    await runProcess(resolveYtDlpPath(), [
-      '--no-playlist',
-      '--force-ipv4',
-      '--extractor-args',
-      'youtube:player_client=android,web',
-      '-f',
-      'ba[ext=m4a]/ba/bestaudio/best',
-      '-o',
-      outputTemplate,
-      source
-    ]);
+await runProcess(resolveYtDlpPath(), [
+  '--cookies',
+  '/home/ubuntu/bots/flex-music-bot/cookies.txt',
+  '--no-playlist',
+  '--force-ipv4',
+  '--extractor-args',
+  'youtube:player_client=android,web',
+  '-f',
+  'ba[ext=m4a]/ba/bestaudio/best',
+  '-o',
+  outputTemplate,
+  source
+]);
 
     const downloaded = readdirSync(workDir)
       .map((file) => path.join(workDir, file))
