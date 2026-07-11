@@ -776,7 +776,7 @@ async function prepareAudioFile(query: string): Promise<string> {
   '--js-runtimes',
   'node',
   '--extractor-args',
-  'youtube:player_client=android,web',
+  'youtube:player_client=web',
   '-f',
   'ba[ext=m4a]/ba/bestaudio/best',
   '-o',
