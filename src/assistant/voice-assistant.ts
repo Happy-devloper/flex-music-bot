@@ -770,16 +770,18 @@ async function prepareAudioFile(query: string): Promise<string> {
   const source = isHttpUrl(query) ? query : `ytsearch1:${query}`;
 
   try {
-    const ytDlpArgs = [
-      '--no-playlist',
-      '--force-ipv4',
-      '--extractor-args',
-      'youtube:player_client=android,web',
-      '-f',
-      'ba[ext=m4a]/ba/bestaudio/best',
-      '-o',
-      outputTemplate
-    ];
+   const ytDlpArgs = [
+  '--no-playlist',
+  '--force-ipv4',
+  '--js-runtimes',
+  'node',
+  '--extractor-args',
+  'youtube:player_client=android,web',
+  '-f',
+  'ba[ext=m4a]/ba/bestaudio/best',
+  '-o',
+  outputTemplate
+];
 
     // Add cookies if configured
     if (config.ytDlpCookies) {
