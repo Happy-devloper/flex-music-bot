@@ -222,6 +222,10 @@ export function registerBasicCommands(bot: Bot): void {
       .editMessageText(message.chatId, message.messageId, formatPlayPanel(result, event.query), {
         parse_mode: 'HTML'
       })
+      .then(() => {
+        // Remove any existing inline buttons (e.g. the Play Now button) when playback starts
+        return bot.api.editMessageReplyMarkup(message.chatId, message.messageId, { reply_markup: null });
+      })
       .then(() => rememberSongMessage(result, message))
       .catch(() => undefined);
   });
@@ -288,7 +292,8 @@ function createPlayNowButton(queueId: string): InlineKeyboard {
 }
 
 function createCompletedButton(): InlineKeyboard {
-  return new InlineKeyboard().text('──────────── ●', 'music:completed');
+  // Single button that visually resembles a small control bar (icons)
+  return new InlineKeyboard().text('▷  Ⅱ  ↻  ▢', 'music:completed');
 }
 
 function formatPlayPanel(
