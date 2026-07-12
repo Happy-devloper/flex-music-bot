@@ -862,7 +862,7 @@ async function prepareAudioFile(query: string): Promise<PreparedAudio> {
       '--no-playlist',
       '--force-ipv4',
       '--extractor-args',
-      'youtube:player_client=android,web',
+      'youtube:player_client=web',
       '--print',
       'after_move:%(title)s\\t%(webpage_url)s',
       '-f',
