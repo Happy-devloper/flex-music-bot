@@ -3,6 +3,14 @@ import { isDatabaseConnected } from '../../database/mongoose.js';
 import { voiceAssistant } from '../../assistant/voice-assistant.js';
 import { InlineKeyboard, type Bot, type Context } from 'grammy';
 
+interface SongMessage {
+  chatId: number;
+  messageId: number;
+}
+
+const queuedSongMessages = new Map<string, SongMessage>();
+const playingSongMessages = new Map<number, SongMessage>();
+
 const commandDescriptions = [
   { command: 'start', description: 'Start the bot' },
   { command: 'help', description: 'Show available commands' },
@@ -89,10 +97,11 @@ export function registerBasicCommands(bot: Bot): void {
 
     const result = await voiceAssistant.play(ctx.chat.id, query);
     await deleteCommandMessage(ctx);
-    await ctx.reply(formatPlayPanel(result, query, ctx.from), {
+    const message = await ctx.reply(formatPlayPanel(result, query, ctx.from), {
       parse_mode: 'HTML',
-      reply_markup: createPlaybackMenu()
+      reply_markup: result.status === 'queued' && result.queueId ? createPlayNowButton(result.queueId) : undefined
     });
+    rememberSongMessage(result, { chatId: message.chat.id, messageId: message.message_id });
   });
 
   bot.command('pause', async (ctx) => {
@@ -132,14 +141,7 @@ export function registerBasicCommands(bot: Bot): void {
   });
 
   bot.command('menu', async (ctx) => {
-    if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') {
-      await ctx.reply('/menu works inside a Telegram group.');
-      return;
-    }
-
-    await ctx.reply('Music controls:', {
-      reply_markup: createMusicMenu()
-    });
+    await ctx.reply('Use /play to add a song. Queued songs have a Play Now button.');
   });
 
   bot.callbackQuery('assistant:add', async (ctx) => {
@@ -164,64 +166,77 @@ export function registerBasicCommands(bot: Bot): void {
     }
   });
 
-  bot.callbackQuery('music:join', async (ctx) => {
-    await ctx.answerCallbackQuery();
-
-    if (!ctx.chat || (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup')) {
-      await ctx.reply('Use this inside a group.');
+  bot.callbackQuery(/^music:play-now:(.+)$/, async (ctx) => {
+    if (!ctx.chat) {
+      await ctx.answerCallbackQuery('Use this inside a group.');
       return;
     }
 
-    await ctx.reply((await voiceAssistant.join(ctx.chat.id)).message);
-  });
-
-  bot.callbackQuery('music:pause', async (ctx) => {
-    await ctx.answerCallbackQuery();
-
-    if (ctx.chat) {
-      await ctx.reply((await voiceAssistant.pause(ctx.chat.id)).message);
+    const queueId = ctx.match[1];
+    if (!queueId) {
+      await ctx.answerCallbackQuery('That queued song is no longer available.');
+      return;
     }
-  });
 
-  bot.callbackQuery('music:resume', async (ctx) => {
-    await ctx.answerCallbackQuery();
+    const result = await voiceAssistant.playNow(ctx.chat.id, queueId);
+    await ctx.answerCallbackQuery(result.ok ? 'Playing now.' : result.message);
 
-    if (ctx.chat) {
-      await ctx.reply((await voiceAssistant.resume(ctx.chat.id)).message);
+    if (!result.ok || !ctx.callbackQuery.message) {
+      return;
     }
+
+    const message = {
+      chatId: ctx.callbackQuery.message.chat.id,
+      messageId: ctx.callbackQuery.message.message_id
+    };
+    await ctx.api.editMessageText(
+      message.chatId,
+      message.messageId,
+      formatPlayPanel(result, result.query ?? 'Unknown', ctx.from),
+      { parse_mode: 'HTML' }
+    );
+    rememberSongMessage(result, message);
   });
 
-  bot.callbackQuery('music:skip', async (ctx) => {
-    await ctx.answerCallbackQuery();
+  bot.callbackQuery('music:completed', async (ctx) => {
+    await ctx.answerCallbackQuery('This song has finished.');
+  });
 
-    if (ctx.chat) {
-      await ctx.reply((await voiceAssistant.skip(ctx.chat.id)).message);
+  voiceAssistant.onTrackStarted((event) => {
+    const message = queuedSongMessages.get(event.queueId);
+    if (!message) {
+      return;
     }
+
+    const result = {
+      ok: true,
+      message: `Playing: ${event.query}`,
+      status: 'playing' as const,
+      query: event.query,
+      title: event.title,
+      url: event.url,
+      queueId: event.queueId,
+      durationSeconds: event.durationSeconds
+    };
+    void bot.api
+      .editMessageText(message.chatId, message.messageId, formatPlayPanel(result, event.query), {
+        parse_mode: 'HTML'
+      })
+      .then(() => rememberSongMessage(result, message))
+      .catch(() => undefined);
   });
 
-  bot.callbackQuery('music:stop', async (ctx) => {
-    await ctx.answerCallbackQuery();
-
-    if (ctx.chat) {
-      await ctx.reply((await voiceAssistant.leave(ctx.chat.id)).message);
+  voiceAssistant.onTrackFinished((event) => {
+    const message = playingSongMessages.get(event.chatId);
+    if (!message) {
+      return;
     }
-  });
 
-  bot.callbackQuery('music:previous', async (ctx) => {
-    await ctx.answerCallbackQuery('Previous track is not available yet.');
-  });
-
-  bot.callbackQuery('music:queue', async (ctx) => {
-    await ctx.answerCallbackQuery();
-
-    if (ctx.chat) {
-      await ctx.reply(await voiceAssistant.getQueue(ctx.chat.id));
-    }
-  });
-
-  bot.callbackQuery('music:play_help', async (ctx) => {
-    await ctx.answerCallbackQuery();
-    await ctx.reply('Send /play followed by a song name or YouTube URL.');
+    void bot.api
+      .editMessageReplyMarkup(message.chatId, message.messageId, {
+        reply_markup: createCompletedButton()
+      })
+      .catch(() => undefined);
   });
 
   bot.command('stats', async (ctx) => {
@@ -243,7 +258,7 @@ export function registerBasicCommands(bot: Bot): void {
   });
 }
 
-function createMusicMenu(): InlineKeyboard {
+export function createMusicMenu(): InlineKeyboard {
   return new InlineKeyboard()
     .text('Add assistant', 'assistant:add')
     .text('Join VC', 'music:join')
@@ -256,7 +271,7 @@ function createMusicMenu(): InlineKeyboard {
     .text('Queue', 'music:queue');
 }
 
-function createPlaybackMenu(): InlineKeyboard {
+export function createPlaybackMenu(): InlineKeyboard {
   return new InlineKeyboard()
     .text('▷', 'music:previous')
     .text('Ⅱ', 'music:pause')
@@ -268,12 +283,23 @@ function createPlaybackMenu(): InlineKeyboard {
     .text('Menu', 'music:play_help');
 }
 
+function createPlayNowButton(queueId: string): InlineKeyboard {
+  return new InlineKeyboard().text('Play Now', `music:play-now:${queueId}`);
+}
+
+function createCompletedButton(): InlineKeyboard {
+  return new InlineKeyboard().text('──────────── ●', 'music:completed');
+}
+
 function formatPlayPanel(
   result: Awaited<ReturnType<typeof voiceAssistant.play>>,
   fallbackQuery: string,
   requester?: Context['from']
 ): string {
-  const title = escapeHtml(result.query ?? fallbackQuery);
+  const rawTitle = result.title ?? result.query ?? fallbackQuery;
+  const title = result.url
+    ? `<a href="${escapeHtml(result.url)}">${escapeHtml(rawTitle)}</a>`
+    : escapeHtml(rawTitle);
   const requestedBy = formatRequester(requester);
 
   if (result.status === 'playing') {
@@ -297,6 +323,22 @@ function formatPlayPanel(
   }
 
   return escapeHtml(result.message);
+}
+
+function rememberSongMessage(
+  result: Awaited<ReturnType<typeof voiceAssistant.play>>,
+  message: SongMessage
+): void {
+  if (result.status === 'queued' && result.queueId) {
+    queuedSongMessages.set(result.queueId, message);
+  }
+
+  if (result.status === 'playing') {
+    playingSongMessages.set(message.chatId, message);
+    if (result.queueId) {
+      queuedSongMessages.delete(result.queueId);
+    }
+  }
 }
 
 function formatDuration(seconds?: number): string {
