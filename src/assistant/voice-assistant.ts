@@ -73,19 +73,41 @@ interface VoiceResult {
   query?: string;
   position?: number;
   durationSeconds?: number;
+  queueId?: string;
+  title?: string;
+  url?: string;
 }
 
 interface QueuedTrack {
+  id: string;
   query: string;
-  filePath: Promise<string>;
+  preparedAudio: Promise<PreparedAudio>;
+}
+
+interface PreparedAudio {
+  filePath: string;
+  title: string;
+  url?: string;
 }
 
 interface PlaybackProcess {
+  id: string;
   query: string;
+  title: string;
+  url?: string;
   filePath: string;
   audio: Readable;
   ready: Promise<void>;
   finished: Promise<void>;
+}
+
+export interface TrackPlaybackEvent {
+  chatId: number;
+  queueId: string;
+  query: string;
+  title: string;
+  url?: string;
+  durationSeconds: number;
 }
 
 const PCM_FRAME_BYTES = 960;
@@ -122,6 +144,18 @@ export class VoiceAssistant {
   private readonly client: TelegramClient;
   private readonly activeCalls = new Map<number, ActiveCallState>();
   private connected = false;
+  private readonly trackStartedListeners = new Set<(event: TrackPlaybackEvent) => void>();
+  private readonly trackFinishedListeners = new Set<(event: TrackPlaybackEvent) => void>();
+
+  public onTrackStarted(listener: (event: TrackPlaybackEvent) => void): () => void {
+    this.trackStartedListeners.add(listener);
+    return () => this.trackStartedListeners.delete(listener);
+  }
+
+  public onTrackFinished(listener: (event: TrackPlaybackEvent) => void): () => void {
+    this.trackFinishedListeners.add(listener);
+    return () => this.trackFinishedListeners.delete(listener);
+  }
 
   public constructor() {
     const session = new StringSession(config.sessionString);
@@ -369,7 +403,8 @@ export class VoiceAssistant {
         message: `Queued and downloading: ${query}\nPosition: ${state.queue.length}`,
         status: 'queued',
         query,
-        position: state.queue.length
+        position: state.queue.length,
+        queueId: state.queue.at(-1)?.id
       };
     }
 
@@ -470,6 +505,26 @@ export class VoiceAssistant {
       ok: true,
       message: `Skipped: ${skipped}`
     };
+  }
+
+  public async playNow(chatId: number, queueId: string): Promise<VoiceResult> {
+    const state = this.activeCalls.get(chatId);
+
+    if (!state) {
+      return { ok: false, message: 'No active voice chat found.' };
+    }
+
+    const index = state.queue.findIndex((track) => track.id === queueId);
+    if (index < 0) {
+      return { ok: false, message: 'That queued song is no longer available.' };
+    }
+
+    const track = state.queue.splice(index, 1)[0];
+    if (!track) {
+      return { ok: false, message: 'That queued song is no longer available.' };
+    }
+    stopPlayback(state);
+    return this.startPlayback(chatId, state, track);
   }
 
   public async getQueue(chatId: number): Promise<string> {
@@ -575,6 +630,7 @@ export class VoiceAssistant {
       void activePlayback.finished
         .then(() => {
           if (this.activeCalls.get(chatId)?.playback === activePlayback) {
+            this.emitTrackFinished(chatId, activePlayback);
             cleanupFile(activePlayback.filePath);
             state.playback = undefined;
             void this.playNext(chatId, state);
@@ -606,12 +662,18 @@ export class VoiceAssistant {
         }
       });
 
+      const durationSeconds = getRawAudioDurationSeconds(playback.filePath);
+      this.emitTrackStarted(chatId, playback, durationSeconds);
+
       return {
         ok: true,
         message: `Playing: ${track.query}`,
         status: 'playing',
         query: track.query,
-        durationSeconds: getRawAudioDurationSeconds(playback.filePath)
+        title: playback.title,
+        url: playback.url,
+        queueId: playback.id,
+        durationSeconds
       };
     } catch (error) {
       state.preparing = false;
@@ -624,6 +686,30 @@ export class VoiceAssistant {
         message: `Could not start playback: ${formatError(error)}`
       };
     }
+  }
+
+  private emitTrackStarted(chatId: number, playback: PlaybackProcess, durationSeconds: number): void {
+    const event = {
+      chatId,
+      queueId: playback.id,
+      query: playback.query,
+      title: playback.title,
+      url: playback.url,
+      durationSeconds
+    };
+    this.trackStartedListeners.forEach((listener) => listener(event));
+  }
+
+  private emitTrackFinished(chatId: number, playback: PlaybackProcess): void {
+    const event = {
+      chatId,
+      queueId: playback.id,
+      query: playback.query,
+      title: playback.title,
+      url: playback.url,
+      durationSeconds: getRawAudioDurationSeconds(playback.filePath)
+    };
+    this.trackFinishedListeners.forEach((listener) => listener(event));
   }
 
   private async playNext(chatId: number, state: ActiveCallState): Promise<void> {
@@ -743,26 +829,28 @@ function createSilentPcmStream(): Readable {
 }
 
 function createQueuedTrack(query: string): QueuedTrack {
-  const filePath = prepareAudioFile(query);
-  filePath.catch((error: unknown) => {
+  const preparedAudio = prepareAudioFile(query);
+  preparedAudio.catch((error: unknown) => {
     logger.warn('Queued audio download failed', { query, error: formatError(error) });
   });
 
   return {
+    id: randomUUID(),
     query,
-    filePath
+    preparedAudio
   };
 }
 
 async function createPlaybackProcess(track: QueuedTrack): Promise<PlaybackProcess> {
-  const filePath = await track.filePath;
+  const preparedAudio = await track.preparedAudio;
+  const { filePath, title, url } = preparedAudio;
   const source = createReadStream(filePath);
   const { finished, ready, stream: audio } = createPacedPcmStream(source);
 
-  return { query: track.query, filePath, audio, ready, finished };
+  return { id: track.id, query: track.query, title, url, filePath, audio, ready, finished };
 }
 
-async function prepareAudioFile(query: string): Promise<string> {
+async function prepareAudioFile(query: string): Promise<PreparedAudio> {
   mkdirSync(VOICE_CACHE_DIR, { recursive: true });
 
   const workDir = mkdtempSync(path.join(VOICE_CACHE_DIR, 'track-'));
@@ -770,18 +858,18 @@ async function prepareAudioFile(query: string): Promise<string> {
   const source = isHttpUrl(query) ? query : `ytsearch1:${query}`;
 
   try {
-   const ytDlpArgs = [
-  '--no-playlist',
-  '--force-ipv4',
-  '--js-runtimes',
-  'node',
-  '--extractor-args',
-  'youtube:player_client=web',
-  '-f',
-  'ba[ext=m4a]/ba/bestaudio/best',
-  '-o',
-  outputTemplate
-];
+    const ytDlpArgs = [
+      '--no-playlist',
+      '--force-ipv4',
+      '--extractor-args',
+      'youtube:player_client=android,web',
+      '--print',
+      'after_move:%(title)s\\t%(webpage_url)s',
+      '-f',
+      'ba[ext=m4a]/ba/bestaudio/best',
+      '-o',
+      outputTemplate
+    ];
 
     // Add cookies if configured
     if (config.ytDlpCookies) {
@@ -801,7 +889,7 @@ async function prepareAudioFile(query: string): Promise<string> {
 
     ytDlpArgs.push(source);
 
-    await runProcess(resolveYtDlpPath(), ytDlpArgs);
+    const metadataOutput = await runProcess(resolveYtDlpPath(), ytDlpArgs);
 
     const downloaded = readdirSync(workDir)
       .map((file) => path.join(workDir, file))
@@ -828,18 +916,23 @@ async function prepareAudioFile(query: string): Promise<string> {
       rawPath
     ]);
 
-    return rawPath;
+    const metadata = parseTrackMetadata(metadataOutput, query);
+    return { filePath: rawPath, ...metadata };
   } finally {
     rmSync(workDir, { force: true, recursive: true });
   }
 }
 
-function runProcess(command: string, args: string[]): Promise<void> {
+function runProcess(command: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      stdio: ['ignore', 'ignore', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe']
     });
+    const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
+    child.stdout.on('data', (data: Buffer) => {
+      stdout.push(data);
+    });
 
     child.stderr.on('data', (data: Buffer) => {
       stderr.push(data);
@@ -847,13 +940,27 @@ function runProcess(command: string, args: string[]): Promise<void> {
     child.on('error', reject);
     child.on('close', (code) => {
       if (code === 0) {
-        resolve();
+        resolve(Buffer.concat(stdout).toString());
         return;
       }
 
       reject(new Error(Buffer.concat(stderr).toString().trim() || `${command} exited ${code}`));
     });
   });
+}
+
+function parseTrackMetadata(output: string, fallbackTitle: string): Pick<PreparedAudio, 'title' | 'url'> {
+  const metadataLine = output
+    .split(/\r?\n/)
+    .reverse()
+    .find((line) => line.includes('\t'));
+
+  if (!metadataLine) {
+    return { title: fallbackTitle, url: isHttpUrl(fallbackTitle) ? fallbackTitle : undefined };
+  }
+
+  const [title, url] = metadataLine.split('\t', 2);
+  return { title: title ?? fallbackTitle, url: url && isHttpUrl(url) ? url : undefined };
 }
 
 function cleanupFile(filePath: string): void {
@@ -866,7 +973,7 @@ function cleanupFile(filePath: string): void {
 
 function cleanupQueuedTracks(queue: QueuedTrack[]): void {
   for (const track of queue) {
-    track.filePath.then(cleanupFile).catch(() => undefined);
+    track.preparedAudio.then(({ filePath }) => cleanupFile(filePath)).catch(() => undefined);
   }
 
   queue.length = 0;
