@@ -10,6 +10,18 @@ interface VoiceResult {
   query?: string;
   position?: number;
   durationSeconds?: number;
+  queueId?: string;
+  title?: string;
+  url?: string;
+}
+
+interface TrackPlaybackEvent {
+  chatId: number;
+  queueId: string;
+  query: string;
+  title: string;
+  url?: string;
+  durationSeconds: number;
 }
 
 interface WorkerResponse {
@@ -32,6 +44,18 @@ export class PyTgCallsVoiceAssistant {
   private readonly pending = new Map<number, PendingRequest>();
   private nextId = 1;
   private connected = false;
+
+  // The Python engine does not yet emit track lifecycle events. Keep the same
+  // public shape as the native engine so the bot UI can run with either engine.
+  public onTrackStarted(listener: (event: TrackPlaybackEvent) => void): () => void {
+    void listener;
+    return () => undefined;
+  }
+
+  public onTrackFinished(listener: (event: TrackPlaybackEvent) => void): () => void {
+    void listener;
+    return () => undefined;
+  }
 
   public async connect(): Promise<void> {
     if (this.connected) {
@@ -89,6 +113,15 @@ export class PyTgCallsVoiceAssistant {
   public async pause(chatId: number): Promise<VoiceResult> {
     await this.connect();
     return this.send('pause', { chatId });
+  }
+
+  public playNow(chatId: number, queueId: string): Promise<VoiceResult> {
+    void chatId;
+    void queueId;
+    return Promise.resolve({
+      ok: false,
+      message: 'Play Now is available when VOICE_ENGINE is set to gram-tgcalls.'
+    });
   }
 
   public async resume(chatId: number): Promise<VoiceResult> {
