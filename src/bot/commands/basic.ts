@@ -117,8 +117,25 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
 
-    const result = await voiceAssistant.play(ctx.chat.id, query);
+    const loadingMessage = await ctx.reply('⏳ Preparing your song...');
+    let result: Awaited<ReturnType<typeof voiceAssistant.play>> | undefined;
+
+    try {
+      result = await voiceAssistant.play(ctx.chat.id, query);
+    } catch (error) {
+      await clearLoadingMessage(ctx, loadingMessage);
+      await ctx.reply(error instanceof Error ? error.message : 'Could not prepare your song.');
+      return;
+    } finally {
+      await clearLoadingMessage(ctx, loadingMessage);
+    }
+
     await deleteCommandMessage(ctx);
+
+    if (!result?.ok) {
+      await ctx.reply(result?.message ?? 'Could not prepare your song.');
+      return;
+    }
 
     const payload: PlaybackPanelPayload = {
       chatId: ctx.chat.id,
@@ -716,6 +733,14 @@ function formatDuration(seconds?: number): string {
   const remainingSeconds = seconds % 60;
 
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+async function clearLoadingMessage(ctx: Context, loadingMessage: { chat: { id: number }; message_id: number }): Promise<void> {
+  try {
+    await ctx.api.deleteMessage(loadingMessage.chat.id, loadingMessage.message_id);
+  } catch {
+    // Ignore if the loading message is already gone.
+  }
 }
 
 async function deleteCommandMessage(ctx: Context): Promise<void> {
