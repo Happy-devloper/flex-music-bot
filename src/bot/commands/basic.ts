@@ -521,16 +521,12 @@ export function createMusicMenu(): InlineKeyboard {
 }
 
 export function createPlaybackMenu(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text('▷', 'music:previous')
-    .text('Ⅱ', 'music:pause')
-    .text('↻', 'music:resume')
-    .text('▷Ⅱ', 'music:skip')
-    .text('□', 'music:stop')
-    .row()
-    .text('Queue', 'music:queue')
-    .text('Menu', 'music:play_help');
-}
+ new InlineKeyboard()
+  .text("⏮", "player_prev")
+  .text("⏯", "player_pause")
+  .text("🔄", "player_restart")
+  .text("⏭", "player_skip")
+  .text("⏹", "player_stop");
 
 function createPlayNowButton(queueId: string): InlineKeyboard {
   return new InlineKeyboard().text('▶ Play Now', `music:play-now:${queueId}`);
