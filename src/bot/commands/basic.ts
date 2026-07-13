@@ -539,11 +539,12 @@ export function createMusicMenu(): InlineKeyboard {
 
 export function createPlaybackMenu(): InlineKeyboard {
   return new InlineKeyboard()
-    .text('⏮', 'player_prev')
-    .text('⏯', 'player_pause')
-    .text('🔄', 'player_restart')
-    .text('⏭', 'player_skip')
-    .text('⏹', 'player_stop');
+    .text('⏮️', 'music:skip')     // change later when you implement previous
+    .text('⏸️', 'music:pause')
+    .text('▶️', 'music:resume')
+    .text('🔄', 'music:loop')
+    .text('⏭️', 'music:skip')
+    .text('⏹️', 'music:stop');
 }
 
 function createPlayNowButton(queueId: string): InlineKeyboard {
@@ -552,12 +553,12 @@ function createPlayNowButton(queueId: string): InlineKeyboard {
 
 function buildPlayerKeyboard(_isPaused: boolean): InlineKeyboard {
   return new InlineKeyboard()
-    .text('⏮️', 'prev')
-    .text('⏸️', 'pause')
-    .text('▶️', 'resume')
-    .text('🔄', 'replay')
-    .text('⏭️', 'skip')
-    .text('⏹️', 'stop');
+    .text('⏮️', 'music:skip')     // change later when you implement previous
+    .text('⏸️', 'music:pause')
+    .text('▶️', 'music:resume')
+    .text('🔄', 'music:loop')
+    .text('⏭️', 'music:skip')
+    .text('⏹️', 'music:stop');
 }
 
 function buildQueueMessage(payload: PlaybackPanelPayload): string {
