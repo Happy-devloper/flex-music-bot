@@ -508,17 +508,12 @@ export function registerBasicCommands(bot: Bot): void {
 }
 
 export function createMusicMenu(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text('Add assistant', 'assistant:add')
-    .text('Join VC', 'music:join')
-    .row()
-    .text('Play', 'music:play_help')
-    .text('Pause', 'music:pause')
-    .text('Resume', 'music:resume')
-    .row()
-    .text('Skip', 'music:skip')
-    .text('Queue', 'music:queue');
-}
+new InlineKeyboard()
+  .text("⏮", "player_prev")
+  .text("⏯", "player_pause")
+  .text("🔄", "player_restart")
+  .text("⏭", "player_skip")
+  .text("⏹", "player_stop");
 
 export function createPlaybackMenu(): InlineKeyboard {
   return new InlineKeyboard()
