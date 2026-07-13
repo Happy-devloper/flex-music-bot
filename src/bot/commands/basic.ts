@@ -675,10 +675,16 @@ async function updatePlaybackPanel(
   payload: PlaybackPanelPayload,
   options?: { reply_markup?: InlineKeyboard }
 ): Promise<SongMessage> {
-  const nextMessage = await sendPlaybackPanel(bot, currentMessage, payload, {
-    parse_mode: 'HTML',
-    reply_markup: options?.reply_markup
-  });
+ const nextMessage = await sendPlaybackPanel(bot, currentMessage, payload, {
+  parse_mode: 'HTML',
+  reply_markup:
+    options?.reply_markup ??
+    (payload.status === 'queued'
+      ? createPlayNowButton(payload.queueId ?? '')
+      : payload.status === 'stopped'
+        ? undefined
+        : buildPlayerKeyboard(payload.status === 'paused'))
+});
 
   const updatedMessage: SongMessage = {
     ...currentMessage,
