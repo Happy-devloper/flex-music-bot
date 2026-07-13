@@ -533,15 +533,14 @@ function createPlayNowButton(queueId: string): InlineKeyboard {
   return new InlineKeyboard().text('▶ Play Now', `music:play-now:${queueId}`);
 }
 
-function buildPlayerKeyboard(isPaused: boolean): InlineKeyboard {
+function buildPlayerKeyboard(_isPaused: boolean): InlineKeyboard {
   return new InlineKeyboard()
-    .text(isPaused ? '▶ Resume' : '⏸ Pause', isPaused ? 'music:resume' : 'music:pause')
-    .text('⏭ Skip', 'music:skip')
-    .row()
-    .text('🔁 Loop', 'music:loop')
-    .text('📜 Queue', 'music:queue')
-    .row()
-    .text('⏹ Stop', 'music:stop');
+    .text('⏮️', 'prev')
+    .text('⏸️', 'pause')
+    .text('▶️', 'resume')
+    .text('🔄', 'replay')
+    .text('⏭️', 'skip')
+    .text('⏹️', 'stop');
 }
 
 function buildQueueMessage(payload: PlaybackPanelPayload): string {
