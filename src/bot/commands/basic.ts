@@ -548,7 +548,7 @@ export function createPlaybackMenu(): InlineKeyboard {
 }
 
 function createPlayNowButton(queueId: string): InlineKeyboard {
-  return new InlineKeyboard().text('▶ Play Now', `music:play-now:${queueId}`);
+  return new InlineKeyboard().text('▶', `music:play-now:${queueId}`);
 }
 
 function buildPlayerKeyboard(_isPaused: boolean): InlineKeyboard {
@@ -568,11 +568,11 @@ function buildQueueMessage(payload: PlaybackPanelPayload): string {
   );
 
   return [
-    '➕ Added to Queue',
+    '♪ Added to Queue',
     '',
-    `🎶Title: ${title}`,
-    `🕛Duration: ${formatDuration(payload.durationSeconds)} min`,
-    `🙍🏻Requested by: ${formatRequester(payload.requester)}`
+    `♫ Title: ${title}`,
+    `⏱ Duration: ${formatDuration(payload.durationSeconds)} min`,
+    `◌ Requested by: ${formatRequester(payload.requester)}`
   ].join('\n');
 }
 
@@ -586,21 +586,21 @@ function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
 
   const header =
     payload.status === 'paused'
-      ? '⏸️ Paused'
+      ? '⏸ Paused'
       : payload.status === 'resumed'
-        ? '▶️ Resumed'
+        ? '▶ Resumed'
         : payload.status === 'skipped'
-          ? '⏭️ Skipped'
+          ? '⏭ Skipped'
           : payload.status === 'stopped'
-            ? '⏹️ Playback Finished'
-            : '🎵 Started streaming';
+            ? '■ Playback Finished'
+            : '♫ Started streaming';
 
   return [
     header,
     '',
-    `🎶Title: ${title}`,
-    `🕛Duration: ${duration}`,
-    `🙍🏻Requested by: ${formatRequester(payload.requester)}`
+    `♫ Title: ${title}`,
+    `⏱ Duration: ${duration}`,
+    `◌ Requested by: ${formatRequester(payload.requester)}`
   ].join('\n');
 }
 function getLinkedTitle(title: string, url?: string): string {
