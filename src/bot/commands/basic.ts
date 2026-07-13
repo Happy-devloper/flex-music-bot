@@ -552,13 +552,11 @@ function buildQueueMessage(payload: PlaybackPanelPayload): string {
   return [
     '➕ <b>Added to Queue</b>',
     '',
-    '▶️ <b>Title:</b>',
-    title,
+    '▶️ <b>Title:</b>',title,
     '',
     `⏱ <b>Duration:</b> ${formatDuration(payload.durationSeconds)}`,
     '',
-    '👤 <b>Requested by:</b>',
-    formatRequester(payload.requester)
+    '👤 <b>Requested by:</b>',formatRequester(payload.requester)
   ].join('\n');
 }
 
@@ -578,13 +576,11 @@ function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
   return [
     `${header}`,
     '',
-    '▶️ <b>Title:</b>',
-    title,
+    '▶️ <b>Title:</b>',title,
     '',
     `⏱ <b>Duration:</b> ${duration}`,
     '',
-    '👤 <b>Requested by:</b>',
-    formatRequester(payload.requester)
+    '👤 <b>Requested by:</b>',formatRequester(payload.requester)
   ].join('\n');
 }
 
