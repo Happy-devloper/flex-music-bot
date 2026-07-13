@@ -561,29 +561,32 @@ function buildQueueMessage(payload: PlaybackPanelPayload): string {
 }
 
 function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(payload.title ?? payload.message ?? 'Unknown track', payload.url);
-  const duration = formatDuration(payload.durationSeconds);
-  const header = payload.status === 'paused'
-    ? '⏸ Paused'
-    : payload.status === 'resumed'
-      ? '▶ Resumed'
-      : payload.status === 'skipped'
-        ? '⏭ Skipped'
-        : payload.status === 'stopped'
-          ? '⏹ Finished'
-          : '🎵 Started Streaming';
+  const title = getLinkedTitle(
+    payload.title ?? payload.message ?? 'Unknown Track',
+    payload.url
+  );
+
+  const duration = `${formatDuration(payload.durationSeconds)} min`;
+
+  const header =
+    payload.status === 'paused'
+      ? '⏸️ Paused'
+      : payload.status === 'resumed'
+        ? '▶️ Resumed'
+        : payload.status === 'skipped'
+          ? '⏭️ Skipped'
+          : payload.status === 'stopped'
+            ? '⏹️ Playback Finished'
+            : '🎵 Started streaming';
 
   return [
-    `${header}`,
+    header,
     '',
-    '▶️ Title:',title,
-    '',
-    `⏱ Duration: ${duration}`,
-    '',
-    '👤 Requested by:',formatRequester(payload.requester)
+    `🎶Title: ${title}`,
+    `🕛Duration: ${duration}`,
+    `🙍🏻Requested by: ${formatRequester(payload.requester)}`
   ].join('\n');
 }
-
 function getLinkedTitle(title: string, url?: string): string {
   const safeTitle = escapeHtml(title);
   const resolvedUrl = getYoutubeLink(title, url);
@@ -729,11 +732,12 @@ function formatRequester(user?: Context['from']): string {
     return 'Unknown';
   }
 
-  if (user.username) {
-    return `@${escapeHtml(user.username)}`;
-  }
+  const fullName = [user.first_name, user.last_name]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
 
-  return escapeHtml(user.first_name ?? 'Unknown');
+  return escapeHtml(fullName || user.username || 'Unknown');
 }
 
 function escapeHtml(value: string): string {
