@@ -3,13 +3,38 @@ import { isDatabaseConnected } from '../../database/mongoose.js';
 import { voiceAssistant } from '../../assistant/voice-assistant.js';
 import { InlineKeyboard, type Bot, type Context } from 'grammy';
 
+type PlaybackStatus = 'queued' | 'playing' | 'paused' | 'resumed' | 'skipped' | 'stopped' | 'error' | 'info';
+
 interface SongMessage {
   chatId: number;
   messageId: number;
+  kind: 'text' | 'photo';
+  title?: string;
+  url?: string;
+  durationSeconds?: number;
+  requester?: Context['from'];
+  status?: PlaybackStatus;
+  queueId?: string;
+  position?: number;
+  startedAt?: number;
+}
+
+interface PlaybackPanelPayload {
+  chatId: number;
+  status: PlaybackStatus;
+  title?: string;
+  url?: string;
+  requester?: Context['from'];
+  durationSeconds?: number;
+  position?: number;
+  queueId?: string;
+  message?: string;
+  elapsedSeconds?: number;
 }
 
 const queuedSongMessages = new Map<string, SongMessage>();
 const playingSongMessages = new Map<number, SongMessage>();
+const progressTimers = new Map<number, ReturnType<typeof setInterval>>();
 
 const commandDescriptions = [
   { command: 'start', description: 'Start the bot' },
@@ -97,11 +122,35 @@ export function registerBasicCommands(bot: Bot): void {
 
     const result = await voiceAssistant.play(ctx.chat.id, query);
     await deleteCommandMessage(ctx);
-    const message = await ctx.reply(formatPlayPanel(result, query, ctx.from), {
+
+    const payload: PlaybackPanelPayload = {
+      chatId: ctx.chat.id,
+      status: result.status ?? 'queued',
+      title: result.title ?? result.query ?? query,
+      url: result.url,
+      requester: ctx.from,
+      durationSeconds: result.durationSeconds,
+      position: result.position,
+      queueId: result.queueId,
+      message: result.message
+    };
+
+    const message = await sendPlaybackPanel(bot, undefined, payload, {
       parse_mode: 'HTML',
-      reply_markup: result.status === 'queued' && result.queueId ? createPlayNowButton(result.queueId) : undefined
+      reply_markup: result.status === 'queued' && result.queueId ? createPlayNowButton(result.queueId) : buildPlayerKeyboard(false)
     });
-    rememberSongMessage(result, { chatId: message.chat.id, messageId: message.message_id });
+    rememberSongMessage(result, {
+      chatId: message.chat.id,
+      messageId: message.message_id,
+      kind: message.photo ? 'photo' : 'text',
+      title: payload.title,
+      url: payload.url,
+      durationSeconds: payload.durationSeconds,
+      requester: payload.requester,
+      status: payload.status,
+      queueId: payload.queueId,
+      position: payload.position
+    });
   });
 
   bot.command('pause', async (ctx) => {
@@ -110,7 +159,27 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
 
-    await ctx.reply((await voiceAssistant.pause(ctx.chat.id)).message);
+    const result = await voiceAssistant.pause(ctx.chat.id);
+    await deleteCommandMessage(ctx);
+
+    const message = playingSongMessages.get(ctx.chat.id);
+    if (result.ok && message) {
+      await updatePlaybackPanel(bot, message, {
+        chatId: ctx.chat.id,
+        status: 'paused',
+        title: message.title,
+        url: message.url,
+        requester: message.requester,
+        durationSeconds: message.durationSeconds,
+        queueId: message.queueId,
+        message: result.message,
+        elapsedSeconds: getElapsedSeconds(message.startedAt)
+      });
+      stopProgressTimer(ctx.chat.id);
+      return;
+    }
+
+    await ctx.reply(result.message);
   });
 
   bot.command('resume', async (ctx) => {
@@ -119,7 +188,27 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
 
-    await ctx.reply((await voiceAssistant.resume(ctx.chat.id)).message);
+    const result = await voiceAssistant.resume(ctx.chat.id);
+    await deleteCommandMessage(ctx);
+
+    const message = playingSongMessages.get(ctx.chat.id);
+    if (result.ok && message) {
+      const updated = await updatePlaybackPanel(bot, message, {
+        chatId: ctx.chat.id,
+        status: 'resumed',
+        title: message.title,
+        url: message.url,
+        requester: message.requester,
+        durationSeconds: message.durationSeconds,
+        queueId: message.queueId,
+        message: result.message,
+        elapsedSeconds: getElapsedSeconds(message.startedAt)
+      });
+      startProgressUpdates(bot, updated);
+      return;
+    }
+
+    await ctx.reply(result.message);
   });
 
   bot.command('skip', async (ctx) => {
@@ -128,7 +217,27 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
 
-    await ctx.reply((await voiceAssistant.skip(ctx.chat.id)).message);
+    const result = await voiceAssistant.skip(ctx.chat.id);
+    await deleteCommandMessage(ctx);
+
+    const message = playingSongMessages.get(ctx.chat.id);
+    if (result.ok && message) {
+      await updatePlaybackPanel(bot, message, {
+        chatId: ctx.chat.id,
+        status: 'skipped',
+        title: message.title,
+        url: message.url,
+        requester: message.requester,
+        durationSeconds: message.durationSeconds,
+        queueId: message.queueId,
+        message: result.message,
+        elapsedSeconds: getElapsedSeconds(message.startedAt)
+      });
+      stopProgressTimer(ctx.chat.id);
+      return;
+    }
+
+    await ctx.reply(result.message);
   });
 
   bot.command('queue', async (ctx) => {
@@ -141,7 +250,7 @@ export function registerBasicCommands(bot: Bot): void {
   });
 
   bot.command('menu', async (ctx) => {
-    await ctx.reply('Use /play to add a song. Queued songs have a Play Now button.');
+    await ctx.reply('Use /play to add a song. Playback controls appear in the player message.');
   });
 
   bot.callbackQuery('assistant:add', async (ctx) => {
@@ -185,17 +294,146 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
 
-    const message = {
+    const currentMessage = {
       chatId: ctx.callbackQuery.message.chat.id,
-      messageId: ctx.callbackQuery.message.message_id
+      messageId: ctx.callbackQuery.message.message_id,
+      kind: 'text' as const
     };
-    await ctx.api.editMessageText(
-      message.chatId,
-      message.messageId,
-      formatPlayPanel(result, result.query ?? 'Unknown', ctx.from),
-      { parse_mode: 'HTML' }
-    );
-    rememberSongMessage(result, message);
+    const payload: PlaybackPanelPayload = {
+      chatId: currentMessage.chatId,
+      status: result.status ?? 'playing',
+      title: result.title ?? result.query ?? 'Unknown',
+      url: result.url,
+      requester: ctx.from,
+      durationSeconds: result.durationSeconds,
+      queueId: result.queueId,
+      message: result.message
+    };
+    await updatePlaybackPanel(bot, currentMessage, payload, { reply_markup: buildPlayerKeyboard(false) });
+    rememberSongMessage(result, {
+      chatId: currentMessage.chatId,
+      messageId: currentMessage.messageId,
+      kind: 'text',
+      title: payload.title,
+      url: payload.url,
+      durationSeconds: payload.durationSeconds,
+      requester: payload.requester,
+      status: payload.status,
+      queueId: payload.queueId
+    });
+  });
+
+  bot.callbackQuery('music:pause', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const result = await voiceAssistant.pause(ctx.chat?.id ?? 0);
+    const message = ctx.chat ? playingSongMessages.get(ctx.chat.id) : undefined;
+
+    if (result.ok && message) {
+      await updatePlaybackPanel(bot, message, {
+        chatId: message.chatId,
+        status: 'paused',
+        title: message.title,
+        url: message.url,
+        requester: message.requester,
+        durationSeconds: message.durationSeconds,
+        queueId: message.queueId,
+        message: result.message,
+        elapsedSeconds: getElapsedSeconds(message.startedAt)
+      });
+      stopProgressTimer(message.chatId);
+      return;
+    }
+
+    if (ctx.chat) {
+      await ctx.reply(result.message);
+    }
+  });
+
+  bot.callbackQuery('music:resume', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const result = await voiceAssistant.resume(ctx.chat?.id ?? 0);
+    const message = ctx.chat ? playingSongMessages.get(ctx.chat.id) : undefined;
+
+    if (result.ok && message) {
+      const updated = await updatePlaybackPanel(bot, message, {
+        chatId: message.chatId,
+        status: 'resumed',
+        title: message.title,
+        url: message.url,
+        requester: message.requester,
+        durationSeconds: message.durationSeconds,
+        queueId: message.queueId,
+        message: result.message,
+        elapsedSeconds: getElapsedSeconds(message.startedAt)
+      });
+      startProgressUpdates(bot, updated);
+      return;
+    }
+
+    if (ctx.chat) {
+      await ctx.reply(result.message);
+    }
+  });
+
+  bot.callbackQuery('music:skip', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const result = await voiceAssistant.skip(ctx.chat?.id ?? 0);
+    const message = ctx.chat ? playingSongMessages.get(ctx.chat.id) : undefined;
+
+    if (result.ok && message) {
+      await updatePlaybackPanel(bot, message, {
+        chatId: message.chatId,
+        status: 'skipped',
+        title: message.title,
+        url: message.url,
+        requester: message.requester,
+        durationSeconds: message.durationSeconds,
+        queueId: message.queueId,
+        message: result.message,
+        elapsedSeconds: getElapsedSeconds(message.startedAt)
+      });
+      stopProgressTimer(message.chatId);
+      return;
+    }
+
+    if (ctx.chat) {
+      await ctx.reply(result.message);
+    }
+  });
+
+  bot.callbackQuery('music:stop', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!ctx.chat) {
+      return;
+    }
+
+    const result = await voiceAssistant.leave(ctx.chat.id);
+    const message = playingSongMessages.get(ctx.chat.id);
+    if (message) {
+      await updatePlaybackPanel(bot, message, {
+        chatId: message.chatId,
+        status: 'stopped',
+        title: message.title,
+        url: message.url,
+        requester: message.requester,
+        durationSeconds: message.durationSeconds,
+        queueId: message.queueId,
+        message: result.message,
+        elapsedSeconds: getElapsedSeconds(message.startedAt)
+      });
+      stopProgressTimer(message.chatId);
+    }
+    await ctx.reply(result.message);
+  });
+
+  bot.callbackQuery('music:queue', async (ctx) => {
+    await ctx.answerCallbackQuery('Showing the current queue.');
+    if (!ctx.chat) {
+      return;
+    }
+
+    const queueText = await voiceAssistant.getQueue(ctx.chat.id);
+    await ctx.reply(queueText);
   });
 
   bot.callbackQuery('music:completed', async (ctx) => {
@@ -218,15 +456,27 @@ export function registerBasicCommands(bot: Bot): void {
       queueId: event.queueId,
       durationSeconds: event.durationSeconds
     };
-    void bot.api
-      .editMessageText(message.chatId, message.messageId, formatPlayPanel(result, event.query), {
-        parse_mode: 'HTML'
+
+    void updatePlaybackPanel(
+      bot,
+      message,
+      {
+        chatId: message.chatId,
+        status: 'playing',
+        title: event.title,
+        url: event.url,
+        requester: message.requester,
+        durationSeconds: event.durationSeconds,
+        queueId: event.queueId,
+        message: result.message,
+        elapsedSeconds: 0
+      },
+      { reply_markup: buildPlayerKeyboard(false) }
+    )
+      .then((updated) => {
+        startProgressUpdates(bot, updated);
+        rememberSongMessage(result, updated);
       })
-      .then(() => {
-        // Remove any existing inline buttons (e.g. the Play Now button) when playback starts
-        return bot.api.editMessageReplyMarkup(message.chatId, message.messageId, { reply_markup: null });
-      })
-      .then(() => rememberSongMessage(result, message))
       .catch(() => undefined);
   });
 
@@ -236,11 +486,23 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
 
-    void bot.api
-      .editMessageReplyMarkup(message.chatId, message.messageId, {
-        reply_markup: createCompletedButton()
-      })
-      .catch(() => undefined);
+    stopProgressTimer(event.chatId);
+    void updatePlaybackPanel(
+      bot,
+      message,
+      {
+        chatId: event.chatId,
+        status: 'stopped',
+        title: event.title,
+        url: event.url,
+        requester: message.requester,
+        durationSeconds: event.durationSeconds,
+        queueId: message.queueId,
+        message: 'Playback finished.',
+        elapsedSeconds: event.durationSeconds
+      },
+      { reply_markup: undefined }
+    ).catch(() => undefined);
   });
 
   bot.command('stats', async (ctx) => {
@@ -288,46 +550,223 @@ export function createPlaybackMenu(): InlineKeyboard {
 }
 
 function createPlayNowButton(queueId: string): InlineKeyboard {
-  return new InlineKeyboard().text('Play Now', `music:play-now:${queueId}`);
+  return new InlineKeyboard().text('▶ Play Now', `music:play-now:${queueId}`);
 }
 
-function createCompletedButton(): InlineKeyboard {
-  // Single button that visually resembles a small control bar (icons)
-  return new InlineKeyboard().text('▷  Ⅱ  ↻  ▢', 'music:completed');
+function buildPlayerKeyboard(isPaused: boolean): InlineKeyboard {
+  return new InlineKeyboard()
+    .text(isPaused ? '▶ Resume' : '⏸ Pause', isPaused ? 'music:resume' : 'music:pause')
+    .text('⏭ Skip', 'music:skip')
+    .row()
+    .text('⏹ Stop', 'music:stop')
+    .text('📃 Queue', 'music:queue');
 }
 
-function formatPlayPanel(
-  result: Awaited<ReturnType<typeof voiceAssistant.play>>,
-  fallbackQuery: string,
-  requester?: Context['from']
-): string {
-  const rawTitle = result.title ?? result.query ?? fallbackQuery;
-  const title = result.url
-    ? `<a href="${escapeHtml(result.url)}">${escapeHtml(rawTitle)}</a>`
-    : escapeHtml(rawTitle);
-  const requestedBy = formatRequester(requester);
+function buildQueueMessage(payload: PlaybackPanelPayload): string {
+  const title = getLinkedTitle(payload.title ?? payload.message ?? 'Unknown track', payload.url);
+  return [
+    '🎵 <b><u>Added to Queue</u></b>',
+    '',
+    `🎼 <b>Title:</b> ${title}`,
+    `⏱ <b>Duration:</b> ${formatDuration(payload.durationSeconds)}`,
+    `👤 <b>Requested by:</b> ${formatRequester(payload.requester)}`,
+    `📃 <b>Queue Position:</b> ${payload.position ?? '-'}`
+  ].join('\n');
+}
 
-  if (result.status === 'playing') {
-    return [
-      '♫ <b>Started streaming</b>',
-      '',
-      `▷ <b>Title:</b> ${title}`,
-      `◷ <b>Duration:</b> ${formatDuration(result.durationSeconds)} min`,
-      `♧ <b>Requested by:</b> ${requestedBy}`
-    ].join('\n');
+function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
+  const title = getLinkedTitle(payload.title ?? payload.message ?? 'Unknown track', payload.url);
+  const duration = formatDuration(payload.durationSeconds);
+  const elapsed = formatDuration(Math.min(payload.elapsedSeconds ?? 0, payload.durationSeconds ?? 0));
+  const header = payload.status === 'paused'
+    ? 'Playback Paused'
+    : payload.status === 'resumed'
+      ? 'Playback Resumed'
+      : payload.status === 'skipped'
+        ? 'Skipped'
+        : payload.status === 'stopped'
+          ? 'Playback Finished'
+          : 'Started Streaming';
+
+  return [
+    `🎵 <b><u>${header}</u></b>`,
+    '',
+    '🎼 <b>Title:</b>',
+    title,
+    '',
+    '⏱ <b>Duration:</b>',
+    duration,
+    '',
+    '👤 <b>Requested by:</b>',
+    formatRequester(payload.requester),
+    '',
+    buildProgressBar(payload.elapsedSeconds ?? 0, payload.durationSeconds),
+    '',
+    `⏳ ${elapsed} / ${duration}`
+  ].join('\n');
+}
+
+function buildProgressBar(elapsedSeconds: number, totalSeconds?: number): string {
+  if (!totalSeconds || totalSeconds <= 0) {
+    return '━━━━━━━━━━━━━━◉━━━━━━';
   }
 
-  if (result.status === 'queued') {
-    return [
-      '♫ <b>Added to queue</b>',
-      '',
-      `▷ <b>Title:</b> ${title}`,
-      `⌁ <b>Position:</b> ${result.position ?? '-'}`,
-      `♧ <b>Requested by:</b> ${requestedBy}`
-    ].join('\n');
+  const length = 20;
+  const progress = Math.min(Math.max(elapsedSeconds / totalSeconds, 0), 1);
+  const position = Math.round(progress * (length - 1));
+  return Array.from({ length }, (_, index) => (index === position ? '◉' : '━')).join('');
+}
+
+function getLinkedTitle(title: string, url?: string): string {
+  const safeTitle = escapeHtml(title);
+  const resolvedUrl = getYoutubeLink(title, url);
+  return `<a href="${escapeHtml(resolvedUrl)}">${safeTitle}</a>`;
+}
+
+function getYoutubeLink(title: string, url?: string): string {
+  if (url && /https?:\/\//i.test(url)) {
+    return url;
   }
 
-  return escapeHtml(result.message);
+  const query = encodeURIComponent(title);
+  return `https://www.youtube.com/results?search_query=${query}`;
+}
+
+async function sendPlaybackPanel(
+  bot: Bot,
+  previousMessage: SongMessage | undefined,
+  payload: PlaybackPanelPayload,
+  options?: { parse_mode?: 'HTML'; reply_markup?: InlineKeyboard }
+): Promise<{ chat: { id: number }; message_id: number; photo?: boolean }> {
+  const text = payload.status === 'queued' ? buildQueueMessage(payload) : buildNowPlayingMessage(payload);
+  const thumbnailUrl = getThumbnailUrl(payload.url);
+  const replyMarkup = options?.reply_markup;
+
+  if (previousMessage) {
+    try {
+      if (previousMessage.kind === 'photo' && thumbnailUrl) {
+        await bot.api.editMessageCaption(previousMessage.chatId, previousMessage.messageId, {
+          caption: text,
+          parse_mode: 'HTML',
+          reply_markup: replyMarkup
+        });
+        return { chat: { id: previousMessage.chatId }, message_id: previousMessage.messageId, photo: true };
+      }
+
+      await bot.api.editMessageText(previousMessage.chatId, previousMessage.messageId, text, {
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup
+      });
+      return { chat: { id: previousMessage.chatId }, message_id: previousMessage.messageId };
+    } catch {
+      // Fall back to a fresh message when the old one is no longer available.
+    }
+  }
+
+  if (thumbnailUrl) {
+    try {
+      const message = await bot.api.sendPhoto(payload.chatId, thumbnailUrl, {
+        caption: text,
+        parse_mode: 'HTML',
+        reply_markup: replyMarkup
+      });
+      return { chat: { id: payload.chatId }, message_id: message.message_id, photo: true };
+    } catch {
+      // Fall back to a simple text message if the thumbnail cannot be sent.
+    }
+  }
+
+  const message = await bot.api.sendMessage(payload.chatId, text, {
+    parse_mode: 'HTML',
+    reply_markup: replyMarkup
+  });
+  return { chat: { id: payload.chatId }, message_id: message.message_id };
+}
+
+async function updatePlaybackPanel(
+  bot: Bot,
+  currentMessage: SongMessage,
+  payload: PlaybackPanelPayload,
+  options?: { reply_markup?: InlineKeyboard }
+): Promise<SongMessage> {
+  const nextMessage = await sendPlaybackPanel(bot, currentMessage, payload, {
+    parse_mode: 'HTML',
+    reply_markup: options?.reply_markup
+  });
+
+  const updatedMessage: SongMessage = {
+    ...currentMessage,
+    chatId: nextMessage.chat.id,
+    messageId: nextMessage.message_id,
+    kind: nextMessage.photo ? 'photo' : 'text',
+    title: payload.title ?? currentMessage.title,
+    url: payload.url ?? currentMessage.url,
+    durationSeconds: payload.durationSeconds ?? currentMessage.durationSeconds,
+    requester: payload.requester ?? currentMessage.requester,
+    status: payload.status,
+    queueId: payload.queueId ?? currentMessage.queueId,
+    position: payload.position ?? currentMessage.position,
+    startedAt: payload.status === 'playing' ? Date.now() : currentMessage.startedAt
+  };
+
+  if (payload.status === 'playing' || payload.status === 'paused' || payload.status === 'resumed') {
+    playingSongMessages.set(updatedMessage.chatId, updatedMessage);
+  }
+
+  if (payload.status === 'queued' && payload.queueId) {
+    queuedSongMessages.set(payload.queueId, updatedMessage);
+  }
+
+  if (payload.status === 'playing' && payload.queueId) {
+    queuedSongMessages.delete(payload.queueId);
+  }
+
+  return updatedMessage;
+}
+
+function startProgressUpdates(bot: Bot, message: SongMessage): void {
+  stopProgressTimer(message.chatId);
+
+  if (!message.durationSeconds || message.durationSeconds <= 0) {
+    return;
+  }
+
+  const timer = setInterval(() => {
+    const elapsed = getElapsedSeconds(message.startedAt);
+    void updatePlaybackPanel(
+      bot,
+      message,
+      {
+        chatId: message.chatId,
+        status: 'playing',
+        title: message.title,
+        url: message.url,
+        requester: message.requester,
+        durationSeconds: message.durationSeconds,
+        queueId: message.queueId,
+        elapsedSeconds: elapsed
+      },
+      { reply_markup: buildPlayerKeyboard(false) }
+    ).catch(() => undefined);
+  }, 12_000);
+
+  progressTimers.set(message.chatId, timer);
+}
+
+function stopProgressTimer(chatId: number): void {
+  const timer = progressTimers.get(chatId);
+  if (timer) {
+    clearInterval(timer);
+    progressTimers.delete(chatId);
+  }
+}
+
+function getElapsedSeconds(startedAt?: number): number {
+  if (!startedAt) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
 }
 
 function rememberSongMessage(
@@ -369,7 +808,7 @@ function formatRequester(user?: Context['from']): string {
     return 'Unknown';
   }
 
-  const name = escapeHtml(user.first_name);
+  const name = escapeHtml(user.first_name ?? user.username ?? 'Unknown');
   return `<a href="tg://user?id=${user.id}">${name}</a>`;
 }
 
@@ -379,6 +818,19 @@ function escapeHtml(value: string): string {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
+}
+
+function getThumbnailUrl(url?: string): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  if (!match?.[1]) {
+    return undefined;
+  }
+
+  return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
 }
 
 export async function registerBotCommands(bot: Bot): Promise<void> {
