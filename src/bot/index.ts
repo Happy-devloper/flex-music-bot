@@ -15,6 +15,10 @@ export function createBot(): Bot {
   bot.api.config.use(autoRetry());
   bot.use(activityMiddleware);
   bot.use(rateLimitMiddleware);
+  bot.on("callback_query:data", async (ctx, next) => {
+  console.log("BUTTON:", ctx.callbackQuery.data);
+  await next();
+});
 
   registerBasicCommands(bot);
 
