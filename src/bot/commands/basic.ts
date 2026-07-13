@@ -548,15 +548,17 @@ function buildPlayerKeyboard(isPaused: boolean): InlineKeyboard {
 }
 
 function buildQueueMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(payload.title ?? payload.message ?? 'Unknown track', payload.url);
+  const title = getLinkedTitle(
+    payload.title ?? payload.message ?? 'Unknown Track',
+    payload.url
+  );
+
   return [
-    '➕ <b>Added to Queue</b>',
+    '➕ Added to Queue',
     '',
-    '▶️Title:',title,
-    '',
-    `⏱ Duration: ${formatDuration(payload.durationSeconds)}`,
-    '',
-    '👤 Requested by:',formatRequester(payload.requester)
+    `🎶Title: ${title}`,
+    `🕛Duration: ${formatDuration(payload.durationSeconds)} min`,
+    `🙍🏻Requested by: ${formatRequester(payload.requester)}`
   ].join('\n');
 }
 
@@ -710,12 +712,13 @@ function rememberSongMessage(
 }
 
 function formatDuration(seconds?: number): string {
-  if (!seconds) {
-    return 'Unknown';
+  if (!seconds || seconds <= 0) {
+    return '--:--';
   }
 
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
+
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
