@@ -859,17 +859,19 @@ async function prepareAudioFile(query: string): Promise<PreparedAudio> {
 
   try {
     const ytDlpArgs = [
-      '--no-playlist',
-      '--force-ipv4',
-      '--extractor-args',
-      'youtube:player_client=web',
-      '--print',
-      'after_move:%(title)s\\t%(webpage_url)s',
-      '-f',
-      'ba[ext=m4a]/ba/bestaudio/best',
-      '-o',
-      outputTemplate
-    ];
+  '--js-runtimes',
+  'node',
+  '--no-playlist',
+  '--force-ipv4',
+  '--extractor-args',
+  'youtube:player_client=web',
+  '--print',
+  'after_move:%(title)s\\t%(webpage_url)s',
+  '-f',
+  'ba[ext=m4a]/ba/bestaudio/best',
+  '-o',
+  outputTemplate
+];
 
     // Add cookies if configured
     if (config.ytDlpCookies) {
