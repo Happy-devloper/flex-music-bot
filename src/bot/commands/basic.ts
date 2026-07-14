@@ -41,7 +41,7 @@ const PREVIOUS_ICON = '⏮';
 const NEXT_ICON = '⏭';
 const LOOP_ICON = '↻';
 const STOP_ICON = '⏹';
-const PROGRESS_INTERVAL_MS = 15000;
+const PROGRESS_INTERVAL_MS = 10000;
 const TITLE_MAX_LENGTH = 60;
 let activeBot: Bot | undefined;
 let progressTicker: NodeJS.Timeout | undefined;
@@ -138,7 +138,7 @@ export function registerBasicCommands(bot: Bot): void {
       'Preparing Audio',
       '',
       'Searching YouTube...',
-      'Downloading audio...',
+      'Downloading...',
       '━━━━━━━━━━━━━━━━━━'
     ].join('\n'));
     let result: Awaited<ReturnType<typeof voiceAssistant.play>> | undefined;
@@ -339,7 +339,8 @@ export function registerBasicCommands(bot: Bot): void {
       requester: ctx.from,
       durationSeconds: result.durationSeconds,
       queueId: result.queueId,
-      message: result.message
+      message: result.message,
+      startedAt: result.status === 'playing' ? Date.now() : undefined
     };
     await updatePlaybackPanel(bot, currentMessage, payload, { reply_markup: buildPlayerKeyboard(false) });
     rememberSongMessage(result, {
@@ -573,7 +574,7 @@ export function createPlaybackMenu(): InlineKeyboard {
 }
 
 function createPlayNowButton(queueId: string): InlineKeyboard {
-  return new InlineKeyboard().text('▶ Play Now', `music:play-now:${queueId}`);
+  return new InlineKeyboard().text('▶ PLAY NOW', `music:play-now:${queueId}`);
 }
 
 function buildPlayerKeyboard(paused: boolean): InlineKeyboard {
@@ -618,10 +619,10 @@ function buildPlaybackCard(payload: PlaybackPanelPayload, kind: 'queued' | 'play
   );
 
   const duration = getDisplayDuration(payload.durationSeconds);
-  const header = kind === 'queued' ? 'ADDED TO QUEUE' : getPlaybackHeader(payload.status);
+  const header = kind === 'queued' ? '<b>＋ ADDED TO QUEUE</b>' : `<b>${getPlaybackHeader(payload.status)}</b>`;
   const progress = formatProgress(payload.durationSeconds, payload.startedAt);
   const requester = formatRequester(payload.requester);
-  const queuePosition = payload.position ? `Queue Position: #${payload.position}` : undefined;
+  const queuePosition = payload.position ? `#${payload.position} in Queue` : undefined;
 
   return [
     '━━━━━━━━━━━━━━━━━━',
@@ -630,9 +631,9 @@ function buildPlaybackCard(payload: PlaybackPanelPayload, kind: 'queued' | 'play
     title,
     '',
     ...(duration ? [`⌚ ${duration}`] : []),
+    ...(progress ? [progress] : []),
     ...(requester ? [`◎ ${requester}`] : []),
-    ...(queuePosition ? ['', queuePosition] : []),
-    ...(progress ? ['', progress] : []),
+    ...(queuePosition ? [queuePosition] : []),
     '━━━━━━━━━━━━━━━━━━'
   ].filter(Boolean).join('\n');
 }
@@ -640,21 +641,21 @@ function buildPlaybackCard(payload: PlaybackPanelPayload, kind: 'queued' | 'play
 function getPlaybackHeader(status?: PlaybackStatus): string {
   switch (status) {
     case 'paused':
-      return 'PAUSED';
+      return '♫ PAUSED';
     case 'resumed':
-      return 'NOW PLAYING';
+      return '♫ NOW PLAYING';
     case 'skipped':
-      return 'SKIPPED';
+      return '♫ SKIPPED';
     case 'stopped':
-      return 'PLAYBACK FINISHED';
+      return '♫ STOPPED';
     default:
-      return 'NOW PLAYING';
+      return '♫ NOW PLAYING';
   }
 }
 function getLinkedTitle(title: string, url?: string): string {
   const safeTitle = escapeHtml(title);
   const resolvedUrl = getYoutubeLink(title, url);
-  return `<a href="${escapeHtml(resolvedUrl)}">${safeTitle}</a>`;
+  return `<b><a href="${escapeHtml(resolvedUrl)}">${safeTitle}</a></b>`;
 }
 
 function getYoutubeLink(title: string, url?: string): string {
@@ -776,7 +777,7 @@ function rememberSongMessage(
 
 function formatDuration(seconds?: number): string {
   if (!seconds || seconds <= 0) {
-    return 'Loading...';
+    return '--:--';
   }
 
   const minutes = Math.floor(seconds / 60);
@@ -799,7 +800,21 @@ function formatProgress(durationSeconds?: number, startedAt?: number): string | 
   }
 
   const elapsedSeconds = Math.min(durationSeconds, Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
-  return `${formatDuration(elapsedSeconds)} / ${formatDuration(durationSeconds)}`;
+  const bar = buildProgressBar(elapsedSeconds, durationSeconds);
+  return [`⌚ ${formatDuration(elapsedSeconds)} / ${formatDuration(durationSeconds)}`, bar].join('\n');
+}
+
+function buildProgressBar(elapsedSeconds: number, durationSeconds: number): string {
+  if (!durationSeconds || durationSeconds <= 0) {
+    return '';
+  }
+
+  const totalSegments = 12;
+  const ratio = Math.min(1, Math.max(0, elapsedSeconds / durationSeconds));
+  const progressIndex = Math.max(1, Math.round(ratio * totalSegments));
+  const filled = '━'.repeat(Math.max(0, progressIndex - 1));
+  const remainder = '━'.repeat(Math.max(0, totalSegments - progressIndex));
+  return `${filled}●${remainder}`;
 }
 
 function truncateTitle(title: string): string {
