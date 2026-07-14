@@ -34,7 +34,7 @@ const queuedSongMessages = new Map<string, SongMessage>();
 const playingSongMessages = new Map<number, SongMessage>();
 
 const PLAY_ICON = '▶';
-const PAUSE_ICON = '❚❚';
+const PAUSE_ICON = '⏸';
 const PREVIOUS_ICON = '⏮';
 const NEXT_ICON = '⏭';
 const LOOP_ICON = '↻';
@@ -555,7 +555,7 @@ export function createPlaybackMenu(): InlineKeyboard {
 }
 
 function createPlayNowButton(queueId: string): InlineKeyboard {
-  return new InlineKeyboard().text(PLAY_ICON, `music:play-now:${queueId}`);
+  return new InlineKeyboard().text('🔵 ▶ Play now', `music:play-now:${queueId}`);
 }
 
 function buildPlayerKeyboard(paused: boolean): InlineKeyboard {
