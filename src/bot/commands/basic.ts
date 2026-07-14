@@ -194,7 +194,7 @@ export function registerBasicCommands(bot: Bot): void {
         durationSeconds: message.durationSeconds,
         queueId: message.queueId,
         message: result.message
-      });
+      }, { reply_markup: buildPlayerKeyboard(true) });
       return;
     }
 
@@ -221,7 +221,7 @@ export function registerBasicCommands(bot: Bot): void {
         durationSeconds: message.durationSeconds,
         queueId: message.queueId,
         message: result.message
-      });
+      }, { reply_markup: buildPlayerKeyboard(false) });
       return;
     }
 
@@ -353,7 +353,7 @@ export function registerBasicCommands(bot: Bot): void {
         durationSeconds: message.durationSeconds,
         queueId: message.queueId,
         message: result.message
-      });
+      }, { reply_markup: buildPlayerKeyboard(true) });
       return;
     }
 
@@ -377,7 +377,7 @@ export function registerBasicCommands(bot: Bot): void {
         durationSeconds: message.durationSeconds,
         queueId: message.queueId,
         message: result.message
-      });
+      }, { reply_markup: buildPlayerKeyboard(false) });
       return;
     }
 
@@ -577,6 +577,18 @@ function buildPlayerKeyboard(paused: boolean): InlineKeyboard {
   return keyboard;
 }
 
+function getPlayerReplyMarkup(status: PlaybackStatus, queueId?: string): InlineKeyboard | undefined {
+  if (status === 'queued' && queueId) {
+    return createPlayNowButton(queueId);
+  }
+
+  if (status === 'stopped' || status === 'skipped') {
+    return undefined;
+  }
+
+  return buildPlayerKeyboard(status === 'paused');
+}
+
 function buildQueueMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(
     payload.title ?? payload.message ?? 'Unknown Track',
@@ -691,16 +703,10 @@ async function updatePlaybackPanel(
   payload: PlaybackPanelPayload,
   options?: { reply_markup?: InlineKeyboard }
 ): Promise<SongMessage> {
- const nextMessage = await sendPlaybackPanel(bot, currentMessage, payload, {
-  parse_mode: 'HTML',
-  reply_markup:
-    options?.reply_markup ??
-    (payload.status === 'queued'
-      ? createPlayNowButton(payload.queueId ?? '')
-      : payload.status === 'stopped'
-        ? undefined
-        : buildPlayerKeyboard(payload.status === 'paused'))
-});
+  const nextMessage = await sendPlaybackPanel(bot, currentMessage, payload, {
+    parse_mode: 'HTML',
+    reply_markup: options?.reply_markup ?? getPlayerReplyMarkup(payload.status, payload.queueId)
+  });
 
   const updatedMessage: SongMessage = {
     ...currentMessage,
