@@ -133,13 +133,7 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
 
-    const loadingMessage = await ctx.reply([
-      '━━━━━━━━━━━━━━━━',
-      '⬇ Downloading...',
-      '⌕ Searching...',
-      '♫ Preparing audio...',
-      '━━━━━━━━━━━━━━━━'
-    ].join('\n'));
+    const loadingMessage = await ctx.reply(buildStatusMessage('🔍 Searching...', 'Finding the best result...'));
     let result: Awaited<ReturnType<typeof voiceAssistant.play>> | undefined;
 
     try {
@@ -174,7 +168,7 @@ export function registerBasicCommands(bot: Bot): void {
 
     const message = await sendPlaybackPanel(bot, undefined, payload, {
       parse_mode: 'HTML',
-      reply_markup: result.status === 'queued' && result.queueId ? createPlayNowButton(result.queueId) : buildPlayerKeyboard(false)
+      reply_markup: result.status === 'queued' && result.queueId ? createPlayNowButton(result.queueId) : buildPlaybackKeyboard(false)
     });
     rememberSongMessage(result, {
       chatId: message.chat.id,
@@ -210,7 +204,7 @@ export function registerBasicCommands(bot: Bot): void {
         durationSeconds: message.durationSeconds,
         queueId: message.queueId,
         message: result.message
-      }, { reply_markup: buildPlayerKeyboard(true) });
+      }, { reply_markup: buildPlaybackKeyboard(true) });
       return;
     }
 
@@ -237,7 +231,7 @@ export function registerBasicCommands(bot: Bot): void {
         durationSeconds: message.durationSeconds,
         queueId: message.queueId,
         message: result.message
-      }, { reply_markup: buildPlayerKeyboard(false) });
+      }, { reply_markup: buildPlaybackKeyboard(false) });
       return;
     }
 
@@ -341,7 +335,7 @@ export function registerBasicCommands(bot: Bot): void {
       message: result.message,
       startedAt: result.status === 'playing' ? Date.now() : undefined
     };
-    await updatePlaybackPanel(bot, currentMessage, payload, { reply_markup: buildPlayerKeyboard(false) });
+    await updatePlaybackPanel(bot, currentMessage, payload, { reply_markup: buildPlaybackKeyboard(false) });
     rememberSongMessage(result, {
       chatId: currentMessage.chatId,
       messageId: currentMessage.messageId,
@@ -370,7 +364,7 @@ export function registerBasicCommands(bot: Bot): void {
         durationSeconds: message.durationSeconds,
         queueId: message.queueId,
         message: result.message
-      }, { reply_markup: buildPlayerKeyboard(true) });
+      }, { reply_markup: buildPlaybackKeyboard(true) });
       return;
     }
 
@@ -394,7 +388,7 @@ export function registerBasicCommands(bot: Bot): void {
         durationSeconds: message.durationSeconds,
         queueId: message.queueId,
         message: result.message
-      }, { reply_markup: buildPlayerKeyboard(false) });
+      }, { reply_markup: buildPlaybackKeyboard(false) });
       return;
     }
 
@@ -499,7 +493,7 @@ export function registerBasicCommands(bot: Bot): void {
         queueId: event.queueId,
         message: result.message
       },
-      { reply_markup: buildPlayerKeyboard(false) }
+      { reply_markup: buildPlaybackKeyboard(false) }
     )
       .then((updated) => {
         rememberSongMessage(result, updated);
@@ -526,7 +520,7 @@ export function registerBasicCommands(bot: Bot): void {
         queueId: message.queueId,
         message: 'Playback finished.'
       },
-      { reply_markup: buildPlayerKeyboard(true) }
+      { reply_markup: buildPlaybackKeyboard(true) }
     ).catch(() => undefined);
   });
 
@@ -577,26 +571,27 @@ function createPlayNowButton(queueId: string): InlineKeyboard {
 }
 
 function buildQueueKeyboard(queueId: string): InlineKeyboard {
-  return new InlineKeyboard().text('▶ PLAY NOW', `music:play-now:${queueId}`);
+  return new InlineKeyboard().text('▶ Play Now', `music:play-now:${queueId}`);
 }
 
-function buildPlayerKeyboard(paused: boolean): InlineKeyboard {
+function buildPlaybackKeyboard(paused: boolean): InlineKeyboard {
   const keyboard = new InlineKeyboard();
 
-  keyboard.text(PREVIOUS_ICON, 'music:previous');
+  keyboard.text('⏮', 'music:previous');
 
   if (paused) {
-    keyboard.text(PLAY_ICON, 'music:resume');
+    keyboard.text('▶', 'music:resume');
   } else {
-    keyboard.text(PAUSE_ICON, 'music:pause');
+    keyboard.text('⏸', 'music:pause');
   }
 
-  keyboard
-    .text(LOOP_ICON, 'music:loop')
-    .text(NEXT_ICON, 'music:skip')
-    .text(STOP_ICON, 'music:stop');
+  keyboard.text('🔁', 'music:loop').text('⏭', 'music:skip').text('⏹', 'music:stop');
 
   return keyboard;
+}
+
+function buildStoppedKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text('▶ Play Again', 'music:resume');
 }
 
 function getPlayerReplyMarkup(status: PlaybackStatus, queueId?: string): InlineKeyboard | undefined {
@@ -604,7 +599,11 @@ function getPlayerReplyMarkup(status: PlaybackStatus, queueId?: string): InlineK
     return createPlayNowButton(queueId);
   }
 
-  return buildPlayerKeyboard(status === 'paused' || status === 'stopped' || status === 'skipped');
+  if (status === 'stopped') {
+    return buildStoppedKeyboard();
+  }
+
+  return buildPlaybackKeyboard(status === 'paused');
 }
 
 function buildQueueMessage(payload: PlaybackPanelPayload): string {
@@ -622,37 +621,47 @@ function buildPlaybackCard(payload: PlaybackPanelPayload, kind: 'queued' | 'play
   );
 
   const duration = getDisplayDuration(payload.durationSeconds);
-  const header = kind === 'queued' ? '<b>＋ ADDED TO QUEUE</b>' : `<b>${getPlaybackHeader(payload.status)}</b>`;
+  const header = kind === 'queued' ? '<b>➕ ADDED TO QUEUE</b>' : `<b>${getPlaybackHeader(payload.status)}</b>`;
   const progress = formatProgress(payload.durationSeconds, payload.startedAt);
   const requester = formatRequester(payload.requester);
-  const queuePosition = payload.position ? `#${payload.position} in Queue` : undefined;
+  const queuePosition = payload.position ? `Queue Position • #${payload.position}` : undefined;
 
   return [
-    '━━━━━━━━━━━━━━━━',
+    '━━━━━━━━━━━━━━',
     header,
     '',
     title,
     '',
-    `⌚ ${duration}`,
+    `⏱ ${duration}`,
     ...(progress ? [progress] : []),
     ...(requester ? [requester] : []),
     ...(queuePosition ? [queuePosition] : []),
-    '━━━━━━━━━━━━━━━━'
+    '━━━━━━━━━━━━━━'
   ].filter(Boolean).join('\n');
+}
+
+function buildStatusMessage(title: string, body: string): string {
+  return [
+    '━━━━━━━━━━━━━━',
+    title,
+    '',
+    body,
+    '━━━━━━━━━━━━━━'
+  ].join('\n');
 }
 
 function getPlaybackHeader(status?: PlaybackStatus): string {
   switch (status) {
     case 'paused':
-      return '♫ PAUSED';
+      return '⏸ PAUSED';
     case 'resumed':
-      return '♫ NOW PLAYING';
+      return '🎵 NOW PLAYING';
     case 'skipped':
-      return '♫ SKIPPED';
+      return '⏭ SKIPPED';
     case 'stopped':
-      return '♫ STOPPED';
+      return '⏹ STOPPED';
     default:
-      return '♫ NOW PLAYING';
+      return '🎵 NOW PLAYING';
   }
 }
 
@@ -667,8 +676,7 @@ function getYoutubeLink(title: string, url?: string): string {
     return url;
   }
 
-  const query = encodeURIComponent(title);
-  return `https://www.youtube.com/results?search_query=${query}`;
+  return 'https://www.youtube.com/';
 }
 
 async function sendPlaybackPanel(
@@ -781,7 +789,7 @@ function rememberSongMessage(
 
 function formatDuration(seconds?: number): string {
   if (!seconds || seconds <= 0) {
-    return 'Live Stream';
+    return '--:--';
   }
 
   const minutes = Math.floor(seconds / 60);
@@ -843,7 +851,7 @@ async function deleteCommandMessage(ctx: Context): Promise<void> {
 
 function formatRequester(user?: Context['from']): string {
   if (!user) {
-    return '◎ Requested by\nUnknown User';
+    return '👤 Requested by: Unknown User';
   }
 
   const fullName = [user.first_name, user.last_name]
@@ -852,7 +860,7 @@ function formatRequester(user?: Context['from']): string {
     .trim();
 
   const requesterName = fullName || user.username || 'Unknown User';
-  return `◎ Requested by\n${escapeHtml(requesterName)}`;
+  return `👤 Requested by: ${escapeHtml(requesterName)}`;
 }
 
 function escapeHtml(value: string): string {
@@ -896,7 +904,7 @@ function startProgressTicker(): void {
           message: message.title ?? 'Playing',
           startedAt: message.startedAt
         },
-        { reply_markup: buildPlayerKeyboard(false) }
+        { reply_markup: buildPlaybackKeyboard(false) }
       ).catch(() => undefined);
     }
   }, PROGRESS_INTERVAL_MS);
