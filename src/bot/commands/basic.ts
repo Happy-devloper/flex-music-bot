@@ -134,12 +134,11 @@ export function registerBasicCommands(bot: Bot): void {
     }
 
     const loadingMessage = await ctx.reply([
-      '━━━━━━━━━━━━━━━━━━',
-      'Preparing Audio',
-      '',
-      'Searching YouTube...',
-      'Downloading...',
-      '━━━━━━━━━━━━━━━━━━'
+      '━━━━━━━━━━━━━━━━',
+      '⬇ Downloading...',
+      '⌕ Searching...',
+      '♫ Preparing audio...',
+      '━━━━━━━━━━━━━━━━'
     ].join('\n'));
     let result: Awaited<ReturnType<typeof voiceAssistant.play>> | undefined;
 
@@ -574,6 +573,10 @@ export function createPlaybackMenu(): InlineKeyboard {
 }
 
 function createPlayNowButton(queueId: string): InlineKeyboard {
+  return buildQueueKeyboard(queueId);
+}
+
+function buildQueueKeyboard(queueId: string): InlineKeyboard {
   return new InlineKeyboard().text('▶ PLAY NOW', `music:play-now:${queueId}`);
 }
 
@@ -625,16 +628,16 @@ function buildPlaybackCard(payload: PlaybackPanelPayload, kind: 'queued' | 'play
   const queuePosition = payload.position ? `#${payload.position} in Queue` : undefined;
 
   return [
-    '━━━━━━━━━━━━━━━━━━',
+    '━━━━━━━━━━━━━━━━',
     header,
     '',
     title,
     '',
-    ...(duration ? [`⌚ ${duration}`] : []),
+    `⌚ ${duration}`,
     ...(progress ? [progress] : []),
-    ...(requester ? [`◎ ${requester}`] : []),
+    ...(requester ? [requester] : []),
     ...(queuePosition ? [queuePosition] : []),
-    '━━━━━━━━━━━━━━━━━━'
+    '━━━━━━━━━━━━━━━━'
   ].filter(Boolean).join('\n');
 }
 
@@ -652,6 +655,7 @@ function getPlaybackHeader(status?: PlaybackStatus): string {
       return '♫ NOW PLAYING';
   }
 }
+
 function getLinkedTitle(title: string, url?: string): string {
   const safeTitle = escapeHtml(title);
   const resolvedUrl = getYoutubeLink(title, url);
@@ -777,7 +781,7 @@ function rememberSongMessage(
 
 function formatDuration(seconds?: number): string {
   if (!seconds || seconds <= 0) {
-    return '--:--';
+    return 'Live Stream';
   }
 
   const minutes = Math.floor(seconds / 60);
@@ -786,11 +790,7 @@ function formatDuration(seconds?: number): string {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
-function getDisplayDuration(seconds?: number): string | undefined {
-  if (!seconds || seconds <= 0) {
-    return undefined;
-  }
-
+function getDisplayDuration(seconds?: number): string {
   return formatDuration(seconds);
 }
 
@@ -801,7 +801,7 @@ function formatProgress(durationSeconds?: number, startedAt?: number): string | 
 
   const elapsedSeconds = Math.min(durationSeconds, Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
   const bar = buildProgressBar(elapsedSeconds, durationSeconds);
-  return [`⌚ ${formatDuration(elapsedSeconds)} / ${formatDuration(durationSeconds)}`, bar].join('\n');
+  return [`${formatDuration(elapsedSeconds)} / ${formatDuration(durationSeconds)}`, bar].join('\n');
 }
 
 function buildProgressBar(elapsedSeconds: number, durationSeconds: number): string {
@@ -811,10 +811,10 @@ function buildProgressBar(elapsedSeconds: number, durationSeconds: number): stri
 
   const totalSegments = 12;
   const ratio = Math.min(1, Math.max(0, elapsedSeconds / durationSeconds));
-  const progressIndex = Math.max(1, Math.round(ratio * totalSegments));
-  const filled = '━'.repeat(Math.max(0, progressIndex - 1));
-  const remainder = '━'.repeat(Math.max(0, totalSegments - progressIndex));
-  return `${filled}●${remainder}`;
+  const markerIndex = Math.round(ratio * (totalSegments - 1));
+  const prefix = '━'.repeat(markerIndex);
+  const suffix = '━'.repeat(Math.max(0, totalSegments - 1 - markerIndex));
+  return `${prefix}●${suffix}`;
 }
 
 function truncateTitle(title: string): string {
@@ -843,7 +843,7 @@ async function deleteCommandMessage(ctx: Context): Promise<void> {
 
 function formatRequester(user?: Context['from']): string {
   if (!user) {
-    return 'Unknown';
+    return '◎ Requested by\nUnknown User';
   }
 
   const fullName = [user.first_name, user.last_name]
@@ -851,7 +851,8 @@ function formatRequester(user?: Context['from']): string {
     .join(' ')
     .trim();
 
-  return escapeHtml(fullName || user.username || 'Unknown');
+  const requesterName = fullName || user.username || 'Unknown User';
+  return `◎ Requested by\n${escapeHtml(requesterName)}`;
 }
 
 function escapeHtml(value: string): string {
