@@ -33,6 +33,13 @@ interface PlaybackPanelPayload {
 const queuedSongMessages = new Map<string, SongMessage>();
 const playingSongMessages = new Map<number, SongMessage>();
 
+const PLAY_ICON = '▶';
+const PAUSE_ICON = '❚❚';
+const PREVIOUS_ICON = '⏮';
+const NEXT_ICON = '⏭';
+const LOOP_ICON = '↻';
+const STOP_ICON = '⏹';
+
 const commandDescriptions = [
   { command: 'start', description: 'Start the bot' },
   { command: 'help', description: 'Show available commands' },
@@ -539,33 +546,33 @@ export function createMusicMenu(): InlineKeyboard {
 
 export function createPlaybackMenu(): InlineKeyboard {
   return new InlineKeyboard()
-    .text('⏮️', 'music:skip')     // change later when you implement previous
-    .text('⏸️', 'music:pause')
-    .text('▶️', 'music:resume')
-    .text('🔄', 'music:loop')
-    .text('⏭️', 'music:skip')
-    .text('⏹️', 'music:stop');
+    .text(PREVIOUS_ICON, 'music:previous')
+    .text(PAUSE_ICON, 'music:pause')
+    .text(PLAY_ICON, 'music:resume')
+    .text(LOOP_ICON, 'music:loop')
+    .text(NEXT_ICON, 'music:skip')
+    .text(STOP_ICON, 'music:stop');
 }
 
 function createPlayNowButton(queueId: string): InlineKeyboard {
-  return new InlineKeyboard().text('▶', `music:play-now:${queueId}`);
+  return new InlineKeyboard().text(PLAY_ICON, `music:play-now:${queueId}`);
 }
 
 function buildPlayerKeyboard(paused: boolean): InlineKeyboard {
   const keyboard = new InlineKeyboard();
 
-  keyboard.text('⏮️', 'music:previous');
+  keyboard.text(PREVIOUS_ICON, 'music:previous');
 
   if (paused) {
-    keyboard.text('▶️', 'music:resume');
+    keyboard.text(PLAY_ICON, 'music:resume');
   } else {
-    keyboard.text('⏸️', 'music:pause');
+    keyboard.text(PAUSE_ICON, 'music:pause');
   }
 
   keyboard
-    .text('🔄', 'music:loop')
-    .text('⏭️', 'music:skip')
-    .text('⏹️', 'music:stop');
+    .text(LOOP_ICON, 'music:loop')
+    .text(NEXT_ICON, 'music:skip')
+    .text(STOP_ICON, 'music:stop');
 
   return keyboard;
 }
