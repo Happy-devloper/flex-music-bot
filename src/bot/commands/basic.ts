@@ -130,7 +130,7 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
 
-    const loadingMsg = await ctx.reply('🔍 Searching...');
+    const loadingMsg = await ctx.reply('🔍 Searching...\n\nPlease wait...');
     let result: Awaited<ReturnType<typeof voiceAssistant.play>> | undefined;
 
     try {
@@ -149,9 +149,6 @@ export function registerBasicCommands(bot: Bot): void {
       await ctx.reply(result?.message ?? 'Could not prepare your song.');
       return;
     }
-
-    // Compact user request banner (one message before the panel)
-    await sendUserRequestBanner(ctx, query);
 
     const payload: PlaybackPanelPayload = {
       chatId: ctx.chat.id,
@@ -554,36 +551,32 @@ function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
   const progress = buildProgressLine(payload.durationSeconds, payload.startedAt);
   const requester = formatRequester(payload.requester);
-  return [`🎵 <b>NOW PLAYING</b>`, `🎶 ${title}`, progress, requester].join('\n');
+  return ['🎵 <b>Now Playing</b>', '', `🎶 ${title}`, '', progress, '', requester].join('\n');
 }
 
 function buildPausedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
-  const progress = buildProgressLine(payload.durationSeconds, payload.startedAt); // frozen
   const requester = formatRequester(payload.requester);
-  return [`⏸ <b>PAUSED</b>`, `🎶 ${title}`, progress, requester].join('\n');
+  return ['⏸ <b>Paused</b>', '', `🎶 ${title}`, '', requester].join('\n');
 }
 
 function buildStoppedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
-  const duration = payload.durationSeconds ? formatDuration(payload.durationSeconds) : '--:--';
   const requester = formatRequester(payload.requester);
-  return [`⏹ <b>STOPPED</b>`, `🎶 ${title}`, `🕒 ${duration}`, requester].join('\n');
+  return ['⏹ <b>Playback Stopped</b>', '', `🎶 ${title}`, '', requester].join('\n');
 }
 
 function buildSkippedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
-  const duration = payload.durationSeconds ? formatDuration(payload.durationSeconds) : '--:--';
   const requester = formatRequester(payload.requester);
-  return [`⏭ <b>SKIPPED</b>`, `🎶 ${title}`, `🕒 ${duration}`, requester].join('\n');
+  return ['⏭ <b>Skipped</b>', '', `🎶 ${title}`, '', requester].join('\n');
 }
 
 function buildQueueMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
-  const duration = payload.durationSeconds ? formatDuration(payload.durationSeconds) : '--:--';
   const requester = formatRequester(payload.requester);
-  const position = payload.position ? `📋 Queue Position #${payload.position}` : '';
-  return [`➕ <b>ADDED TO QUEUE</b>`, `🎶 ${title}`, `🕒 ${duration}`, requester, position].filter(Boolean).join('\n');
+  const position = payload.position ? `📋 Position: #${payload.position}` : '';
+  return ['➕ <b>Added to Queue</b>', '', `🎶 ${title}`, '', position, '', requester].filter(Boolean).join('\n');
 }
 
 function buildStatusMessage(payload: PlaybackPanelPayload): string {
@@ -619,15 +612,15 @@ function buildProgressLine(
     ? Math.min(total, Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
     : 0;
   const bar = drawProgressBar(elapsed, total);
-  return `🕒 ${formatDuration(elapsed)} ${bar} ${formatDuration(total)}`;
+  return [`🕒 ${formatDuration(elapsed)} / ${formatDuration(total)}`, bar].join('\n');
 }
 
 function drawProgressBar(elapsed: number, total: number): string {
   const ratio = Math.min(1, Math.max(0, elapsed / total));
   const markerIdx = Math.round(ratio * (PROGRESS_BAR_SEGMENTS - 1));
-  const filled = '━'.repeat(markerIdx);
-  const empty = '━'.repeat(PROGRESS_BAR_SEGMENTS - 1 - markerIdx);
-  return `${filled}●${empty}`;
+  const filled = '▬'.repeat(markerIdx);
+  const empty = '▬'.repeat(PROGRESS_BAR_SEGMENTS - 1 - markerIdx);
+  return `${filled}◉${empty}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -654,9 +647,9 @@ function truncateTitle(title: string): string {
 /*  Requester formatting                                               */
 /* ------------------------------------------------------------------ */
 function formatRequester(user?: Context['from']): string {
-  if (!user) return '👤 Requested by\nUnknown';
+  if (!user) return '👤 Requested by: Unknown';
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Unknown User';
-  return `👤 Requested by\n${escapeHtml(name)}`;
+  return `👤 Requested by: ${escapeHtml(name)}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -672,7 +665,7 @@ function buildPlaybackKeyboard(paused: boolean): InlineKeyboard {
 }
 
 function buildStoppedKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text('▶ Play Again', 'music:resume');
+  return new InlineKeyboard().text('▶ Resume', 'music:resume');
 }
 
 function buildQueuePlayNowKeyboard(queueId: string): InlineKeyboard {
@@ -686,7 +679,7 @@ function getPlayerReplyMarkup(
 ): InlineKeyboard | undefined {
   if (status === 'queued' && queueId) return buildQueuePlayNowKeyboard(queueId);
   if (status === 'stopped') return buildStoppedKeyboard();
-  if (status === 'skipped') return undefined; // no buttons after skip
+  if (status === 'skipped') return buildPlaybackKeyboard(false);
   return buildPlaybackKeyboard(paused);
 }
 
@@ -826,18 +819,6 @@ async function deleteCommandMessage(ctx: Context): Promise<void> {
   try {
     await ctx.deleteMessage();
   } catch { /* ignore */ }
-}
-
-/* ------------------------------------------------------------------ */
-/*  User request banner (small info before the panel)                  */
-/* ------------------------------------------------------------------ */
-async function sendUserRequestBanner(ctx: Context, query: string): Promise<void> {
-  const user = ctx.from;
-  if (!user) return;
-  const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'User';
-  await ctx.reply(`👤 <b>${escapeHtml(name)}</b>\n<code>/play ${escapeHtml(query)}</code>`, {
-    parse_mode: 'HTML',
-  });
 }
 
 /* ------------------------------------------------------------------ */
