@@ -526,42 +526,79 @@ async function sendUserRequestBanner(ctx: Context, query: string): Promise<void>
 /**
  * Build the now‑playing message following the Resso layout.
  */
-function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
-  const statusLine = getStatusText(payload.status);
-  const titleLine = `▶ Title: ${getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url)}`;
-  const durationLine = `⏱ Duration: ${formatDuration(payload.durationSeconds ?? 0)} min`;
-  const requesterLine = `👤 Requested by: ${formatRequesterName(payload.requester)}`;
+buildNowPlayingMessagefunction buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
+  const title = getLinkedTitle(
+    payload.title ?? payload.message ?? "Unknown Track",
+    payload.url
+  );
 
-  const lines: string[] = [statusLine, titleLine, durationLine, requesterLine];
+  const duration =
+    payload.durationSeconds && payload.durationSeconds > 0
+      ? `${formatDuration(payload.durationSeconds)} min`
+      : "Loading...";
 
-  if (payload.startedAt && payload.durationSeconds && payload.durationSeconds > 0) {
-    const elapsed = Math.min(payload.durationSeconds, Math.max(0, Math.floor((Date.now() - payload.startedAt) / 1000)));
-    lines.push(buildProgressBar(payload.durationSeconds, elapsed));
-    lines.push(`${formatDuration(elapsed)} / ${formatDuration(payload.durationSeconds)}`);
-  }
+  const requester = escapeHtml(payload.requester ?? "Unknown");
 
-  return lines.join('\n');
+  return [
+    "<b>🎵 NOW PLAYING</b>",
+    "",
+    `🎶 ${title}`,
+    "",
+    `🕒 ${duration}`,
+    `👤 ${requester}`,
+    "",
+    "━━━━━━━━━━━━━━━━━━━━"
+  ].join("\n");
 }
 
-/**
- * Build the queued song message.
- */
 function buildQueueMessage(payload: PlaybackPanelPayload): string {
-  const titleLine = `🎶 ${getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url)}`;
-  const durationLine = `⏱ Duration: ${formatDuration(payload.durationSeconds ?? 0)} min`;
-  const requesterLine = `👤 Requested by: ${formatRequesterName(payload.requester)}`;
-  const positionLine = payload.position ? `Queue Position · #${payload.position}` : '';
+  const title = getLinkedTitle(
+    payload.title ?? payload.message ?? "Unknown Track",
+    payload.url
+  );
 
-  const lines: string[] = [
-    '➕ Added to Queue',
-    titleLine,
-    durationLine,
-    requesterLine,
-    positionLine,
-    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'  // separator line
-  ].filter(Boolean);
+  const duration =
+    payload.durationSeconds && payload.durationSeconds > 0
+      ? `${formatDuration(payload.durationSeconds)} min`
+      : "Calculating...";
 
-  return lines.join('\n');
+  const requester = escapeHtml(payload.requester ?? "Unknown");
+
+  return [
+    "<b>➕ ADDED TO QUEUE</b>",
+    "",
+    `🎶 ${title}`,
+    "",
+    `🕒 ${duration}`,
+    `👤 ${requester}`,
+    `📋 Queue Position #${payload.position ?? 1}`
+  ].join("\n");
+}
+
+function buildPausedMessage(payload: PlaybackPanelPayload): string {
+  const title = getLinkedTitle(payload.title!, payload.url);
+
+  return [
+    "<b>⏸ PAUSED</b>",
+    "",
+    `🎶 ${title}`,
+    "",
+    `🕒 ${formatDuration(payload.durationSeconds ?? 0)} min`,
+    `👤 ${escapeHtml(payload.requester ?? "Unknown")}`
+  ].join("\n");
+}
+
+function buildStoppedMessage(payload: PlaybackPanelPayload): string {
+  const title = getLinkedTitle(payload.title!, payload.url);
+
+  return [
+    "<b>⏹ STOPPED</b>",
+    "",
+    `🎶 ${title}`,
+    "",
+    `🕒 ${formatDuration(payload.durationSeconds ?? 0)} min`,
+    `👤 ${escapeHtml(payload.requester ?? "Unknown")}`
+  ].join("\n");
 }
 
 function getStatusText(status?: PlaybackStatus): string {
@@ -617,23 +654,22 @@ function escapeHtml(value: string): string {
 /* ---------- INLINE KEYBOARDS ---------- */
 
 function buildPlaybackKeyboard(paused: boolean): InlineKeyboard {
-  const keyboard = new InlineKeyboard();
-  keyboard.text('⏮', 'music:previous');
-  if (paused) {
-    keyboard.text('▶', 'music:resume');
-  } else {
-    keyboard.text('⏸', 'music:pause');
-  }
-  keyboard.text('🔄', 'music:loop').text('⏭', 'music:skip').text('⏹', 'music:stop');
-  return keyboard;
+  return new InlineKeyboard()
+    .text('⏮', 'music:previous')
+    .text(paused ? '▶' : '⏸', paused ? 'music:resume' : 'music:pause')
+    .text('🔁', 'music:loop')
+    .text('⏭', 'music:skip')
+    .text('⏹', 'music:stop');
 }
 
 function buildStoppedKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text('▶ Play Again', 'music:resume');
+  return new InlineKeyboard()
+    .text("▶ Play Now", `music:play-now:${queueId}`);
 }
 
 function buildQueuePlayNowKeyboard(queueId: string): InlineKeyboard {
-  return new InlineKeyboard().text('▶ Play Now', `music:play-now:${queueId}`);
+  return new InlineKeyboard()
+    .text("▶ Play Now", `music:play-now:${queueId}`);
 }
 
 function getPlayerReplyMarkup(status: PlaybackStatus, queueId?: string): InlineKeyboard | undefined {
