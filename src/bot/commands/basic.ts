@@ -35,12 +35,6 @@ interface PlaybackPanelPayload {
 const queuedSongMessages = new Map<string, SongMessage>();
 const playingSongMessages = new Map<number, SongMessage>();
 
-const PLAY_ICON = '▶';
-const PAUSE_ICON = '⏸';
-const PREVIOUS_ICON = '⏮';
-const NEXT_ICON = '⏭';
-const LOOP_ICON = '↻';
-const STOP_ICON = '⏹';
 const PROGRESS_INTERVAL_MS = 10000;
 const TITLE_MAX_LENGTH = 60;
 let activeBot: Bot | undefined;
@@ -167,7 +161,6 @@ export function registerBasicCommands(bot: Bot): void {
     };
 
     const message = await sendPlaybackPanel(bot, undefined, payload, {
-      parse_mode: 'HTML',
       reply_markup: result.status === 'queued' && result.queueId ? createPlayNowButton(result.queueId) : buildPlaybackKeyboard(false)
     });
     rememberSongMessage(result, {
@@ -507,6 +500,7 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
 
+    // Use default keyboard logic (stopped -> "▶ Play Again")
     void updatePlaybackPanel(
       bot,
       message,
@@ -519,8 +513,7 @@ export function registerBasicCommands(bot: Bot): void {
         durationSeconds: event.durationSeconds,
         queueId: message.queueId,
         message: 'Playback finished.'
-      },
-      { reply_markup: buildPlaybackKeyboard(true) }
+      }
     ).catch(() => undefined);
   });
 
@@ -558,12 +551,12 @@ export function createMusicMenu(): InlineKeyboard {
 
 export function createPlaybackMenu(): InlineKeyboard {
   return new InlineKeyboard()
-    .text(PREVIOUS_ICON, 'music:previous')
-    .text(PAUSE_ICON, 'music:pause')
-    .text(PLAY_ICON, 'music:resume')
-    .text(LOOP_ICON, 'music:loop')
-    .text(NEXT_ICON, 'music:skip')
-    .text(STOP_ICON, 'music:stop');
+    .text('⏮', 'music:previous')
+    .text('⏸', 'music:pause')
+    .text('▶', 'music:resume')
+    .text('🔁', 'music:loop')
+    .text('⏭', 'music:skip')
+    .text('⏹', 'music:stop');
 }
 
 function createPlayNowButton(queueId: string): InlineKeyboard {
@@ -606,62 +599,68 @@ function getPlayerReplyMarkup(status: PlaybackStatus, queueId?: string): InlineK
   return buildPlaybackKeyboard(status === 'paused');
 }
 
-function buildQueueMessage(payload: PlaybackPanelPayload): string {
-  return buildPlaybackCard(payload, 'queued');
-}
+// ------------------------------------------------------------
+// Redesigned UI helpers
+// ------------------------------------------------------------
 
 function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
-  return buildPlaybackCard(payload, 'playing');
-}
-
-function buildPlaybackCard(payload: PlaybackPanelPayload, kind: 'queued' | 'playing'): string {
+  const statusLabel = getStatusLabel(payload.status);
   const title = getLinkedTitle(
     truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'),
     payload.url
   );
+  const durationLine = buildDurationLine(payload.durationSeconds, payload.startedAt);
+  const progressBar = payload.startedAt ? buildProgressBar(payload.durationSeconds, payload.startedAt) : undefined;
+  const requesterLine = formatRequester(payload.requester);
 
-  const duration = getDisplayDuration(payload.durationSeconds);
-  const header = kind === 'queued' ? '<b>➕ ADDED TO QUEUE</b>' : `<b>${getPlaybackHeader(payload.status)}</b>`;
-  const progress = formatProgress(payload.durationSeconds, payload.startedAt);
-  const requester = formatRequester(payload.requester);
-  const queuePosition = payload.position ? `Queue Position • #${payload.position}` : undefined;
-
-  return [
-    '━━━━━━━━━━━━━━',
-    header,
-    '',
+  const lines: string[] = [
+    statusLabel,
     title,
-    '',
+    durationLine,
+    ...(progressBar ? [progressBar] : []),
+    requesterLine
+  ].filter(Boolean);
+
+  return lines.join('\n');
+}
+
+function buildQueueMessage(payload: PlaybackPanelPayload): string {
+  const title = getLinkedTitle(
+    truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'),
+    payload.url
+  );
+  const duration = getDisplayDuration(payload.durationSeconds);
+  const requesterLine = formatRequester(payload.requester);
+  const positionLine = payload.position ? `Queue Position · #${payload.position}` : undefined;
+
+  const lines: string[] = [
+    '➕ Added to Queue',
+    title,
     `⏱ ${duration}`,
-    ...(progress ? [progress] : []),
-    ...(requester ? [requester] : []),
-    ...(queuePosition ? [queuePosition] : []),
-    '━━━━━━━━━━━━━━'
-  ].filter(Boolean).join('\n');
+    requesterLine,
+    ...(positionLine ? [positionLine] : [])
+  ].filter(Boolean);
+
+  return lines.join('\n');
 }
 
 function buildStatusMessage(title: string, body: string): string {
-  return [
-    '━━━━━━━━━━━━━━',
-    title,
-    '',
-    body,
-    '━━━━━━━━━━━━━━'
-  ].join('\n');
+  return `${title}\n${body}`;
 }
 
-function getPlaybackHeader(status?: PlaybackStatus): string {
+function getStatusLabel(status?: PlaybackStatus): string {
   switch (status) {
     case 'paused':
-      return '⏸ PAUSED';
+      return '⏸ Paused';
     case 'resumed':
-      return '🎵 NOW PLAYING';
+      return '▶ Playing';
     case 'skipped':
-      return '⏭ SKIPPED';
+      return '⏭ Skipped';
     case 'stopped':
-      return '⏹ STOPPED';
+      return '⏹ Stopped';
+    case 'playing':
     default:
-      return '🎵 NOW PLAYING';
+      return '▶ Playing';
   }
 }
 
@@ -679,29 +678,118 @@ function getYoutubeLink(title: string, url?: string): string {
   return 'https://www.youtube.com/';
 }
 
+function buildDurationLine(durationSeconds?: number, startedAt?: number): string {
+  if (!durationSeconds || durationSeconds <= 0) {
+    return '⏱ --:--';
+  }
+
+  if (startedAt) {
+    const elapsedSeconds = Math.min(durationSeconds, Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    return `⏱ ${formatDuration(elapsedSeconds)} / ${formatDuration(durationSeconds)}`;
+  }
+
+  return `⏱ ${formatDuration(durationSeconds)}`;
+}
+
+function buildProgressBar(durationSeconds?: number, startedAt?: number): string | undefined {
+  if (!durationSeconds || durationSeconds <= 0 || !startedAt) {
+    return undefined;
+  }
+
+  const elapsedSeconds = Math.min(durationSeconds, Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+  const totalSegments = 12;
+  const ratio = Math.min(1, Math.max(0, elapsedSeconds / durationSeconds));
+  const markerIndex = Math.round(ratio * (totalSegments - 1));
+  const prefix = '━'.repeat(markerIndex);
+  const suffix = '━'.repeat(Math.max(0, totalSegments - 1 - markerIndex));
+  return `${prefix}●${suffix}`;
+}
+
+function formatDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+function getDisplayDuration(seconds?: number): string {
+  return formatDuration(seconds ?? 0);
+}
+
+function truncateTitle(title: string): string {
+  if (title.length <= TITLE_MAX_LENGTH) {
+    return title;
+  }
+  return `${title.slice(0, TITLE_MAX_LENGTH - 3).trimEnd()}...`;
+}
+
+function formatRequester(user?: Context['from']): string {
+  if (!user) {
+    return '👤 Unknown User';
+  }
+
+  const fullName = [user.first_name, user.last_name]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  const requesterName = fullName || user.username || 'Unknown User';
+  return `👤 ${escapeHtml(requesterName)}`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+async function clearLoadingMessage(ctx: Context, loadingMessage: { chat: { id: number }; message_id: number }): Promise<void> {
+  try {
+    await ctx.api.deleteMessage(loadingMessage.chat.id, loadingMessage.message_id);
+  } catch {
+    // Ignore if the loading message is already gone.
+  }
+}
+
+async function deleteCommandMessage(ctx: Context): Promise<void> {
+  try {
+    await ctx.deleteMessage();
+  } catch {
+    // The bot can only delete user commands when it has delete-message permission.
+  }
+}
+
+// ------------------------------------------------------------
+// Message sending with disabled link preview
+// ------------------------------------------------------------
 async function sendPlaybackPanel(
   bot: Bot,
   previousMessage: SongMessage | undefined,
   payload: PlaybackPanelPayload,
-  options?: { parse_mode?: 'HTML'; reply_markup?: InlineKeyboard }
+  options?: { reply_markup?: InlineKeyboard }
 ): Promise<{ chat: { id: number }; message_id: number; photo?: boolean }> {
   const text = payload.status === 'queued' ? buildQueueMessage(payload) : buildNowPlayingMessage(payload);
   const thumbnailUrl = getThumbnailUrl(payload.url);
   const replyMarkup = options?.reply_markup;
+
+  const baseOptions = {
+    parse_mode: 'HTML' as const,
+    link_preview_options: { is_disabled: true }
+  };
 
   if (previousMessage) {
     try {
       if (previousMessage.kind === 'photo' && thumbnailUrl) {
         await bot.api.editMessageCaption(previousMessage.chatId, previousMessage.messageId, {
           caption: text,
-          parse_mode: 'HTML',
+          ...baseOptions,
           reply_markup: replyMarkup
         });
         return { chat: { id: previousMessage.chatId }, message_id: previousMessage.messageId, photo: true };
       }
 
       await bot.api.editMessageText(previousMessage.chatId, previousMessage.messageId, text, {
-        parse_mode: 'HTML',
+        ...baseOptions,
         reply_markup: replyMarkup
       });
       return { chat: { id: previousMessage.chatId }, message_id: previousMessage.messageId };
@@ -714,7 +802,7 @@ async function sendPlaybackPanel(
     try {
       const message = await bot.api.sendPhoto(payload.chatId, thumbnailUrl, {
         caption: text,
-        parse_mode: 'HTML',
+        ...baseOptions,
         reply_markup: replyMarkup
       });
       return { chat: { id: payload.chatId }, message_id: message.message_id, photo: true };
@@ -724,7 +812,7 @@ async function sendPlaybackPanel(
   }
 
   const message = await bot.api.sendMessage(payload.chatId, text, {
-    parse_mode: 'HTML',
+    ...baseOptions,
     reply_markup: replyMarkup
   });
   return { chat: { id: payload.chatId }, message_id: message.message_id };
@@ -737,7 +825,6 @@ async function updatePlaybackPanel(
   options?: { reply_markup?: InlineKeyboard }
 ): Promise<SongMessage> {
   const nextMessage = await sendPlaybackPanel(bot, currentMessage, payload, {
-    parse_mode: 'HTML',
     reply_markup: options?.reply_markup ?? getPlayerReplyMarkup(payload.status, payload.queueId)
   });
 
@@ -787,88 +874,17 @@ function rememberSongMessage(
   }
 }
 
-function formatDuration(seconds?: number): string {
-  if (!seconds || seconds <= 0) {
-    return '--:--';
-  }
-
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-}
-
-function getDisplayDuration(seconds?: number): string {
-  return formatDuration(seconds);
-}
-
-function formatProgress(durationSeconds?: number, startedAt?: number): string | undefined {
-  if (!durationSeconds || durationSeconds <= 0 || !startedAt) {
+function getThumbnailUrl(url?: string): string | undefined {
+  if (!url) {
     return undefined;
   }
 
-  const elapsedSeconds = Math.min(durationSeconds, Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
-  const bar = buildProgressBar(elapsedSeconds, durationSeconds);
-  return [`${formatDuration(elapsedSeconds)} / ${formatDuration(durationSeconds)}`, bar].join('\n');
-}
-
-function buildProgressBar(elapsedSeconds: number, durationSeconds: number): string {
-  if (!durationSeconds || durationSeconds <= 0) {
-    return '';
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  if (!match?.[1]) {
+    return undefined;
   }
 
-  const totalSegments = 12;
-  const ratio = Math.min(1, Math.max(0, elapsedSeconds / durationSeconds));
-  const markerIndex = Math.round(ratio * (totalSegments - 1));
-  const prefix = '━'.repeat(markerIndex);
-  const suffix = '━'.repeat(Math.max(0, totalSegments - 1 - markerIndex));
-  return `${prefix}●${suffix}`;
-}
-
-function truncateTitle(title: string): string {
-  if (title.length <= TITLE_MAX_LENGTH) {
-    return title;
-  }
-
-  return `${title.slice(0, TITLE_MAX_LENGTH - 3).trimEnd()}...`;
-}
-
-async function clearLoadingMessage(ctx: Context, loadingMessage: { chat: { id: number }; message_id: number }): Promise<void> {
-  try {
-    await ctx.api.deleteMessage(loadingMessage.chat.id, loadingMessage.message_id);
-  } catch {
-    // Ignore if the loading message is already gone.
-  }
-}
-
-async function deleteCommandMessage(ctx: Context): Promise<void> {
-  try {
-    await ctx.deleteMessage();
-  } catch {
-    // The bot can only delete user commands when it has delete-message permission.
-  }
-}
-
-function formatRequester(user?: Context['from']): string {
-  if (!user) {
-    return '👤 Requested by: Unknown User';
-  }
-
-  const fullName = [user.first_name, user.last_name]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
-
-  const requesterName = fullName || user.username || 'Unknown User';
-  return `👤 Requested by: ${escapeHtml(requesterName)}`;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+  return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
 }
 
 function startProgressTicker(): void {
@@ -908,19 +924,6 @@ function startProgressTicker(): void {
       ).catch(() => undefined);
     }
   }, PROGRESS_INTERVAL_MS);
-}
-
-function getThumbnailUrl(url?: string): string | undefined {
-  if (!url) {
-    return undefined;
-  }
-
-  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
-  if (!match?.[1]) {
-    return undefined;
-  }
-
-  return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`;
 }
 
 export async function registerBotCommands(bot: Bot): Promise<void> {
