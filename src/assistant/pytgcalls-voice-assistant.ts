@@ -13,6 +13,7 @@ interface VoiceResult {
   queueId?: string;
   title?: string;
   url?: string;
+  ready?: Promise<void>;
 }
 
 interface TrackPlaybackEvent {
@@ -105,8 +106,9 @@ export class PyTgCallsVoiceAssistant {
     return this.send('leave', { chatId });
   }
 
-  public async play(chatId: number, query: string): Promise<VoiceResult> {
+  public async play(chatId: number, query: string, progress?: unknown): Promise<VoiceResult> {
     await this.connect();
+    void progress;
     return this.send('play', { chatId, query });
   }
 
