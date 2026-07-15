@@ -342,10 +342,11 @@ export function registerBasicCommands(bot: Bot): void {
     await ctx.answerCallbackQuery(result.ok ? 'Playing now.' : result.message);
     if (!result.ok || !ctx.callbackQuery.message) return;
 
-    const currentMsg: SongMessage = {
+    const queuedMsg = queuedSongMessages.get(queueId);
+    const currentMsg: SongMessage = queuedMsg ?? {
       chatId: ctx.callbackQuery.message.chat.id,
       messageId: ctx.callbackQuery.message.message_id,
-      kind: 'text',
+      kind: ctx.callbackQuery.message.photo ? 'photo' : 'text',
     };
 
     const payload: PlaybackPanelPayload = {
