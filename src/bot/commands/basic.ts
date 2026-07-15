@@ -296,14 +296,19 @@ export function registerBasicCommands(bot: Bot): void {
       await ctx.answerCallbackQuery('Use this inside a group.');
       return;
     }
+
     const queueId = ctx.match[1];
     if (!queueId) {
       await ctx.answerCallbackQuery('That queued song is no longer available.');
       return;
     }
+
     const result = await voiceAssistant.playNow(ctx.chat.id, queueId);
     await ctx.answerCallbackQuery(result.ok ? 'Playing now.' : result.message);
-    if (!result.ok || !ctx.callbackQuery.message) return;
+
+    if (!result.ok || !ctx.callbackQuery.message) {
+      return;
+    }
 
     const currentMessage = {
       chatId: ctx.callbackQuery.message.chat.id,
@@ -324,7 +329,7 @@ export function registerBasicCommands(bot: Bot): void {
     await updatePlaybackPanel(bot, currentMessage, payload, { reply_markup: buildPlaybackKeyboard(false) });
     rememberSongMessage(result, {
       chatId: currentMessage.chatId,
-      messageId: currentMessage.message_id,
+      messageId: currentMessage.messageId, // corrected
       kind: 'text',
       title: payload.title,
       url: payload.url,
@@ -334,7 +339,6 @@ export function registerBasicCommands(bot: Bot): void {
       queueId: payload.queueId
     });
   });
-
   bot.callbackQuery('music:pause', async (ctx) => {
     await ctx.answerCallbackQuery();
     const result = await voiceAssistant.pause(ctx.chat?.id ?? 0);
