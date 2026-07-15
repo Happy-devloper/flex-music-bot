@@ -593,6 +593,17 @@ function buildStatusMessage(payload: PlaybackPanelPayload): string {
   }
 }
 
+/* ---------- FIXED getLinkedTitle ---------- */
+function getLinkedTitle(title: string, url?: string): string {
+  const safeTitle = escapeHtml(title);
+  // Only create a link if a valid http(s) URL is present
+  if (url && /^https?:\/\//i.test(url)) {
+    return `<b><a href="${escapeHtml(url)}">${safeTitle}</a></b>`;
+  }
+  // No valid URL → bold plain text, not clickable
+  return `<b>${safeTitle}</b>`;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Progress bar                                                       */
 /* ------------------------------------------------------------------ */
@@ -620,14 +631,8 @@ function drawProgressBar(elapsed: number, total: number): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Title & duration helpers                                           */
+/*  Duration helpers                                                   */
 /* ------------------------------------------------------------------ */
-function getLinkedTitle(title: string, url?: string): string {
-  const safe = escapeHtml(title);
-  const link = url && /^https?:\/\//i.test(url) ? url : 'https://www.youtube.com/';
-  return `<b><a href="${escapeHtml(link)}">${safe}</a></b>`;
-}
-
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -643,7 +648,7 @@ function truncateTitle(title: string): string {
 /*  Requester formatting                                               */
 /* ------------------------------------------------------------------ */
 function formatRequester(user?: Context['from']): string {
-  if (!user) return '�🏻 <b>Requested by:</b> Unknown';
+  if (!user) return '🙍🏻 <b>Requested by:</b> Unknown';
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Unknown User';
   return `🙍🏻 <b>Requested by:</b> ${escapeHtml(name)}`;
 }
