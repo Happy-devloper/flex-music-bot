@@ -130,17 +130,13 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
 
-    const loadingMsg = await ctx.reply('🔍 Searching...\n\nPlease wait...');
     let result: Awaited<ReturnType<typeof voiceAssistant.play>> | undefined;
 
     try {
       result = await voiceAssistant.play(ctx.chat.id, query);
     } catch (error) {
-      await clearMessage(ctx, loadingMsg);
       await ctx.reply(error instanceof Error ? error.message : 'Could not prepare your song.');
       return;
-    } finally {
-      await clearMessage(ctx, loadingMsg);
     }
 
     await deleteCommandMessage(ctx);
@@ -547,36 +543,40 @@ export function registerBasicCommands(bot: Bot): void {
 /*  HELPER: UI MESSAGE BUILDERS                                        */
 /* ================================================================== */
 
+function buildPanelHeader(icon: string, title: string): string {
+  return `${icon} <b>${title}</b>\n${'─'.repeat(20)}`;
+}
+
 function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
   const progress = buildProgressLine(payload.durationSeconds, payload.startedAt);
   const requester = formatRequester(payload.requester);
-  return ['🎵 <b>Now Playing</b>', '', `🎶 ${title}`, '', progress, '', requester].join('\n');
+  return [buildPanelHeader('🎵', 'Now Playing'), '', `🎶 ${title}`, '', progress, '', requester].join('\n');
 }
 
 function buildPausedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  return ['⏸ <b>Paused</b>', '', `🎶 ${title}`, '', requester].join('\n');
+  return [buildPanelHeader('⏸', 'Paused'), '', `🎶 ${title}`, '', requester].join('\n');
 }
 
 function buildStoppedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  return ['⏹ <b>Playback Stopped</b>', '', `🎶 ${title}`, '', requester].join('\n');
+  return [buildPanelHeader('⏹', 'Playback Stopped'), '', `🎶 ${title}`, '', requester].join('\n');
 }
 
 function buildSkippedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  return ['⏭ <b>Skipped</b>', '', `🎶 ${title}`, '', requester].join('\n');
+  return [buildPanelHeader('⏭', 'Skipped'), '', `🎶 ${title}`, '', requester].join('\n');
 }
 
 function buildQueueMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
   const requester = formatRequester(payload.requester);
   const position = payload.position ? `📋 Position: #${payload.position}` : '';
-  return ['➕ <b>Added to Queue</b>', '', `🎶 ${title}`, '', position, '', requester].filter(Boolean).join('\n');
+  return [buildPanelHeader('➕', 'Added to Queue'), '', `🎶 ${title}`, '', position, '', requester].filter(Boolean).join('\n');
 }
 
 function buildStatusMessage(payload: PlaybackPanelPayload): string {
