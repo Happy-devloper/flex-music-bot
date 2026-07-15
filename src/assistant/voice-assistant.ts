@@ -63,6 +63,7 @@ interface ActiveCallState {
   callKey: string;
   queue: QueuedTrack[];
   preparing: boolean;
+  currentPlaybackRequestId?: string;
   paused: boolean;
 }
 
@@ -537,7 +538,7 @@ export class VoiceAssistant {
     stopPlayback(state);
     const result = await this.startPlayback(chatId, state, track);
 
-    if (!result.ok) {
+    if (!result.ok && result.message !== 'A newer playback request was started.') {
       state.queue.unshift(track);
     }
 
@@ -620,6 +621,8 @@ export class VoiceAssistant {
     trackOrQuery: QueuedTrack | string,
     progress?: PlayProgressFn
   ): Promise<VoiceResult> {
+    const playbackRequestId = randomUUID();
+    state.currentPlaybackRequestId = playbackRequestId;
     const track = typeof trackOrQuery === 'string' ? createQueuedTrack(trackOrQuery, progress) : trackOrQuery;
     let playback: PlaybackProcess | undefined;
 
@@ -627,6 +630,15 @@ export class VoiceAssistant {
       state.preparing = true;
       playback = await createPlaybackProcess(track);
       await playback.ready;
+
+      if (state.currentPlaybackRequestId !== playbackRequestId) {
+        stopDetachedPlayback(playback);
+        state.preparing = false;
+        return {
+          ok: false,
+          message: 'A newer playback request was started.'
+        };
+      }
 
       if (!(await this.isVoiceChatStillActive(chatId, state))) {
         stopDetachedPlayback(playback);
@@ -705,6 +717,10 @@ export class VoiceAssistant {
         ok: false,
         message: `Could not start playback: ${formatError(error)}`
       };
+    } finally {
+      if (state.currentPlaybackRequestId === playbackRequestId) {
+        state.currentPlaybackRequestId = undefined;
+      }
     }
   }
 
@@ -1240,3 +1256,4 @@ function forceSessionIpv4Dc(session: StringSession): void {
 
   session.setDC(session.dcId, ipv4Address, 443);
 }
+    
