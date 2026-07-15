@@ -150,7 +150,7 @@ export function registerBasicCommands(bot: Bot): void {
       chatId: ctx.chat.id,
       status: result.status ?? 'queued',
       title: result.title ?? result.query ?? query,
-      url: result.url,                      // actual YouTube URL if available
+      url: result.url,
       requester: ctx.from,
       durationSeconds: result.durationSeconds,
       position: result.position,
@@ -202,7 +202,7 @@ export function registerBasicCommands(bot: Bot): void {
           durationSeconds: msg.durationSeconds,
           queueId: msg.queueId,
           message: result.message,
-          startedAt: msg.startedAt,        // keep original startedAt for progress
+          startedAt: msg.startedAt,
         },
         { reply_markup: buildPlaybackKeyboard(true) }
       );
@@ -234,7 +234,7 @@ export function registerBasicCommands(bot: Bot): void {
           durationSeconds: msg.durationSeconds,
           queueId: msg.queueId,
           message: result.message,
-          startedAt: msg.startedAt,        // preserve original start time
+          startedAt: msg.startedAt,
         },
         { reply_markup: buildPlaybackKeyboard(false) }
       );
@@ -540,12 +540,41 @@ export function registerBasicCommands(bot: Bot): void {
 }
 
 /* ================================================================== */
-/*  HELPER: UI MESSAGE BUILDERS (redesigned)                           */
+/*  HELPER: UI MESSAGE BUILDERS                                        */
 /* ================================================================== */
 
-/**
- * Build the message text based on playback status.
- */
+function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
+  const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
+  const duration = payload.durationSeconds ? `${formatDuration(payload.durationSeconds)} min` : '--:-- min';
+  const requester = formatRequester(payload.requester);
+  return ['🎵 <b>Started streaming</b>', '', `🎶 <b>Title:</b> ${title}`, `🕛 <b>Duration:</b> ${duration}`, requester].join('\n');
+}
+
+function buildPausedMessage(payload: PlaybackPanelPayload): string {
+  const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
+  const requester = formatRequester(payload.requester);
+  return ['⏸ <b>Paused</b>', '', `🎶 <b>Title:</b> ${title}`, requester].join('\n');
+}
+
+function buildStoppedMessage(payload: PlaybackPanelPayload): string {
+  const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
+  const requester = formatRequester(payload.requester);
+  return ['⏹ <b>Playback Stopped</b>', '', `🎶 <b>Title:</b> ${title}`, requester].join('\n');
+}
+
+function buildSkippedMessage(payload: PlaybackPanelPayload): string {
+  const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
+  const requester = formatRequester(payload.requester);
+  return ['⏭ <b>Skipped</b>', '', `🎶 <b>Title:</b> ${title}`, requester].join('\n');
+}
+
+function buildQueueMessage(payload: PlaybackPanelPayload): string {
+  const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
+  const requester = formatRequester(payload.requester);
+  const position = payload.position ? `📋 Position: #${payload.position}` : '';
+  return ['➕ <b>Added to Queue</b>', '', `🎶 <b>Title:</b> ${title}`, position, requester].filter(Boolean).join('\n');
+}
+
 function buildStatusMessage(payload: PlaybackPanelPayload): string {
   switch (payload.status) {
     case 'queued':
@@ -564,64 +593,8 @@ function buildStatusMessage(payload: PlaybackPanelPayload): string {
   }
 }
 
-function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
-  const requester = formatRequester(payload.requester);
-  const progressLine = buildProgressLine(payload.durationSeconds, payload.startedAt);
-  return [
-    '🎵 <b>Started streaming</b>',
-    `🎶 <b>Title:</b> ${title}`,
-    requester,
-    progressLine,
-  ].join('\n');
-}
-
-function buildPausedMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
-  const requester = formatRequester(payload.requester);
-  const progressLine = buildProgressLine(payload.durationSeconds, payload.startedAt);
-  return [
-    '⏸ <b>Paused</b>',
-    `🎶 <b>Title:</b> ${title}`,
-    requester,
-    progressLine,                    // shows where paused
-  ].join('\n');
-}
-
-function buildStoppedMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
-  const requester = formatRequester(payload.requester);
-  return [
-    '⏹ <b>Playback Stopped</b>',
-    `🎶 <b>Title:</b> ${title}`,
-    requester,
-  ].join('\n');
-}
-
-function buildSkippedMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
-  const requester = formatRequester(payload.requester);
-  return [
-    '⏭ <b>Skipped</b>',
-    `🎶 <b>Title:</b> ${title}`,
-    requester,
-  ].join('\n');
-}
-
-function buildQueueMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
-  const requester = formatRequester(payload.requester);
-  const position = payload.position ? `📋 Position: #${payload.position}` : '';
-  return [
-    '➕ <b>Added to Queue</b>',
-    `🎶 <b>Title:</b> ${title}`,
-    requester,
-    position,
-  ].filter(Boolean).join('\n');
-}
-
 /* ------------------------------------------------------------------ */
-/*  Progress bar + time                                                */
+/*  Progress bar                                                       */
 /* ------------------------------------------------------------------ */
 function buildProgressLine(
   durationSeconds?: number,
@@ -635,7 +608,7 @@ function buildProgressLine(
     ? Math.min(total, Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
     : 0;
   const bar = drawProgressBar(elapsed, total);
-  return `🕒 ${formatDuration(elapsed)} / ${formatDuration(total)}\n${bar}`;
+  return [`🕒 ${formatDuration(elapsed)} / ${formatDuration(total)}`, bar].join('\n');
 }
 
 function drawProgressBar(elapsed: number, total: number): string {
@@ -647,16 +620,12 @@ function drawProgressBar(elapsed: number, total: number): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Title formatting – NO fallback to youtube.com                      */
+/*  Title & duration helpers                                           */
 /* ------------------------------------------------------------------ */
 function getLinkedTitle(title: string, url?: string): string {
   const safe = escapeHtml(title);
-  if (url && /^https?:\/\//i.test(url)) {
-    // Link to the exact video URL
-    return `<b><a href="${escapeHtml(url)}">${safe}</a></b>`;
-  }
-  // No URL → plain bold title, no fake link
-  return `<b>${safe}</b>`;
+  const link = url && /^https?:\/\//i.test(url) ? url : 'https://www.youtube.com/';
+  return `<b><a href="${escapeHtml(link)}">${safe}</a></b>`;
 }
 
 function formatDuration(seconds: number): string {
@@ -674,7 +643,7 @@ function truncateTitle(title: string): string {
 /*  Requester formatting                                               */
 /* ------------------------------------------------------------------ */
 function formatRequester(user?: Context['from']): string {
-  if (!user) return '🙍🏻 <b>Requested by:</b> Unknown';
+  if (!user) return '�🏻 <b>Requested by:</b> Unknown';
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Unknown User';
   return `🙍🏻 <b>Requested by:</b> ${escapeHtml(name)}`;
 }
