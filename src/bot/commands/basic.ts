@@ -623,9 +623,18 @@ function drawProgressBar(elapsed: number, total: number): string {
 /*  Title & duration helpers                                           */
 /* ------------------------------------------------------------------ */
 function getLinkedTitle(title: string, url?: string): string {
-  const safe = escapeHtml(title);
-  const link = url && /^https?:\/\//i.test(url) ? url : 'https://www.youtube.com/';
-  return `<b><a href="${escapeHtml(link)}">${safe}</a></b>`;
+  const searchUrl =
+    "https://www.youtube.com/results?search_query=" +
+    encodeURIComponent(title);
+
+  const link =
+    url &&
+    url.startsWith("http") &&
+    url !== "https://www.youtube.com/"
+      ? url
+      : searchUrl;
+
+  return `<a href="${link}">${escapeHtml(title)}</a>`;
 }
 
 function formatDuration(seconds: number): string {
