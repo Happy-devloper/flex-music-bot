@@ -559,13 +559,28 @@ function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
   const duration = payload.durationSeconds ? `${formatDuration(payload.durationSeconds)} min` : '--:-- min';
   const requester = formatRequester(payload.requester);
-  return ['🎵 <b>Started streaming</b>', '', `🎶 <b>Title:</b> ${title}`, `🕛 <b>Duration:</b> ${duration}`, requester].join('\n');
+  const progress = buildProgressLine(payload.durationSeconds, payload.startedAt);
+  return [
+    '🎵 <b>Started streaming</b>',
+    '',
+    `🎶 <b>Title:</b> ${title}`,
+    `🕛 <b>Duration:</b> ${duration}`,
+    progress,
+    requester
+  ].join('\n');
 }
 
 function buildPausedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  return ['⏸ <b>Paused</b>', '', `🎶 <b>Title:</b> ${title}`, requester].join('\n');
+  const progress = buildProgressLine(payload.durationSeconds, payload.startedAt);
+  return [
+    '⏸ <b>Paused</b>',
+    '',
+    `🎶 <b>Title:</b> ${title}`,
+    progress,
+    requester
+  ].join('\n');
 }
 
 function buildStoppedMessage(payload: PlaybackPanelPayload): string {
@@ -781,6 +796,8 @@ async function updatePlaybackPanel(
     payload.status === 'resumed'
   ) {
     playingSongMessages.set(updated.chatId, updated);
+  } else {
+    playingSongMessages.delete(updated.chatId);
   }
   if (payload.status === 'queued' && payload.queueId) {
     queuedSongMessages.set(payload.queueId, updated);
