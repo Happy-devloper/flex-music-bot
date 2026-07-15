@@ -130,11 +130,15 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
 
+    const progressTracker = createTemporaryStatusTracker(ctx);
     let result: Awaited<ReturnType<typeof voiceAssistant.play>> | undefined;
 
     try {
-      result = await voiceAssistant.play(ctx.chat.id, query);
+      result = await voiceAssistant.play(ctx.chat.id, query, async (stage) => {
+        await progressTracker.show(stage);
+      });
     } catch (error) {
+      await progressTracker.clear();
       await ctx.reply(error instanceof Error ? error.message : 'Could not prepare your song.');
       return;
     }
@@ -142,6 +146,7 @@ export function registerBasicCommands(bot: Bot): void {
     await deleteCommandMessage(ctx);
 
     if (!result?.ok) {
+      await progressTracker.clear();
       await ctx.reply(result?.message ?? 'Could not prepare your song.');
       return;
     }
@@ -177,6 +182,12 @@ export function registerBasicCommands(bot: Bot): void {
       queueId: payload.queueId,
       position: payload.position,
     });
+
+    if (result?.ok && result.ready) {
+      void result.ready.finally(() => progressTracker.clear());
+    } else {
+      await progressTracker.clear();
+    }
   });
 
   // ----- /pause --------------------------------------------------------
@@ -623,18 +634,9 @@ function drawProgressBar(elapsed: number, total: number): string {
 /*  Title & duration helpers                                           */
 /* ------------------------------------------------------------------ */
 function getLinkedTitle(title: string, url?: string): string {
-  const searchUrl =
-    "https://www.youtube.com/results?search_query=" +
-    encodeURIComponent(title);
-
-  const link =
-    url &&
-    url.startsWith("http") &&
-    url !== "https://www.youtube.com/"
-      ? url
-      : searchUrl;
-
-  return `<a href="${link}">${escapeHtml(title)}</a>`;
+  const safe = escapeHtml(title);
+  const link = url && /^https?:\/\//i.test(url) ? url : 'https://www.youtube.com/';
+  return `<b><a href="${escapeHtml(link)}">${safe}</a></b>`;
 }
 
 function formatDuration(seconds: number): string {
@@ -824,6 +826,60 @@ async function deleteCommandMessage(ctx: Context): Promise<void> {
   try {
     await ctx.deleteMessage();
   } catch { /* ignore */ }
+}
+
+interface TemporaryStatusTracker {
+  show(stage: 'searching' | 'downloading' | 'downloaded' | 'startingPlayback' | 'playbackStarted'): Promise<void>;
+  clear(): Promise<void>;
+}
+
+function createTemporaryStatusTracker(ctx: Context): TemporaryStatusTracker {
+  let current: { chatId: number; messageId: number } | undefined;
+
+  async function deleteCurrent(): Promise<void> {
+    if (!current) return;
+    try {
+      await ctx.api.deleteMessage(current.chatId, current.messageId);
+    } catch {
+      // ignore cleanup failures
+    } finally {
+      current = undefined;
+    }
+  }
+
+  function getMessageForStage(stage: TemporaryStatusTracker['show'] extends (stage: infer S) => Promise<void> ? S : never): string {
+    switch (stage) {
+      case 'searching':
+        return '🔍 Searching...\n\nFinding the best result...';
+      case 'downloading':
+        return '⬇️ Downloading...\n\nPreparing audio stream...';
+      case 'startingPlayback':
+        return '▶️ Starting Playback...\n\nJoining voice chat...';
+      case 'downloaded':
+      case 'playbackStarted':
+        return '';
+    }
+  }
+
+  return {
+    async show(stage) {
+      if (stage === 'downloaded' || stage === 'playbackStarted') {
+        await deleteCurrent();
+        return;
+      }
+
+      await deleteCurrent();
+      try {
+        const sent = await ctx.reply(getMessageForStage(stage));
+        current = { chatId: sent.chat.id, messageId: sent.message_id };
+      } catch {
+        current = undefined;
+      }
+    },
+    async clear() {
+      await deleteCurrent();
+    }
+  };
 }
 
 /* ------------------------------------------------------------------ */
