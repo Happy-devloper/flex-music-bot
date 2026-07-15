@@ -555,19 +555,19 @@ export function registerBasicCommands(bot: Bot): void {
 /*  HELPER: UI MESSAGE BUILDERS                                        */
 /* ================================================================== */
 
-function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
-  const duration = payload.durationSeconds ? `${formatDuration(payload.durationSeconds)} min` : '--:-- min';
-  const requester = formatRequester(payload.requester);
-  const progress = buildProgressLine(payload.durationSeconds, payload.startedAt);
-  return [
-    '🎵 <b>Started streaming</b>',
-    '',
-    `🎶 <b>Title:</b> ${title}`,
-    `🕛 <b>Duration:</b> ${duration}`,
-    progress,
-    requester
-  ].join('\n');
+function getLinkedTitle(title: string, url?: string): string {
+  const searchUrl =
+    "https://www.youtube.com/results?search_query=" +
+    encodeURIComponent(title);
+
+  const link =
+    url &&
+    url.startsWith("http") &&
+    url !== "https://www.youtube.com/"
+      ? url
+      : searchUrl;
+
+  return `<a href="${link}">${escapeHtml(title)}</a>`;
 }
 
 function buildPausedMessage(payload: PlaybackPanelPayload): string {
