@@ -543,40 +543,36 @@ export function registerBasicCommands(bot: Bot): void {
 /*  HELPER: UI MESSAGE BUILDERS                                        */
 /* ================================================================== */
 
-function buildPanelHeader(icon: string, title: string): string {
-  return `${icon} <b>${title}</b>\n${'─'.repeat(20)}`;
-}
-
 function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
-  const progress = buildProgressLine(payload.durationSeconds, payload.startedAt);
+  const duration = payload.durationSeconds ? `${formatDuration(payload.durationSeconds)} min` : '--:-- min';
   const requester = formatRequester(payload.requester);
-  return [buildPanelHeader('🎵', 'Now Playing'), '', `🎶 ${title}`, '', progress, '', requester].join('\n');
+  return ['🎵 <b>Started streaming</b>', '', `🎶 <b>Title:</b> ${title}`, `🕛 <b>Duration:</b> ${duration}`, requester].join('\n');
 }
 
 function buildPausedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  return [buildPanelHeader('⏸', 'Paused'), '', `🎶 ${title}`, '', requester].join('\n');
+  return ['⏸ <b>Paused</b>', '', `🎶 <b>Title:</b> ${title}`, requester].join('\n');
 }
 
 function buildStoppedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  return [buildPanelHeader('⏹', 'Playback Stopped'), '', `🎶 ${title}`, '', requester].join('\n');
+  return ['⏹ <b>Playback Stopped</b>', '', `🎶 <b>Title:</b> ${title}`, requester].join('\n');
 }
 
 function buildSkippedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  return [buildPanelHeader('⏭', 'Skipped'), '', `🎶 ${title}`, '', requester].join('\n');
+  return ['⏭ <b>Skipped</b>', '', `🎶 <b>Title:</b> ${title}`, requester].join('\n');
 }
 
 function buildQueueMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
   const requester = formatRequester(payload.requester);
   const position = payload.position ? `📋 Position: #${payload.position}` : '';
-  return [buildPanelHeader('➕', 'Added to Queue'), '', `🎶 ${title}`, '', position, '', requester].filter(Boolean).join('\n');
+  return ['➕ <b>Added to Queue</b>', '', `🎶 <b>Title:</b> ${title}`, position, requester].filter(Boolean).join('\n');
 }
 
 function buildStatusMessage(payload: PlaybackPanelPayload): string {
@@ -647,9 +643,9 @@ function truncateTitle(title: string): string {
 /*  Requester formatting                                               */
 /* ------------------------------------------------------------------ */
 function formatRequester(user?: Context['from']): string {
-  if (!user) return '👤 Requested by: Unknown';
+  if (!user) return '�🏻 <b>Requested by:</b> Unknown';
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Unknown User';
-  return `👤 Requested by: ${escapeHtml(name)}`;
+  return `🙍🏻 <b>Requested by:</b> ${escapeHtml(name)}`;
 }
 
 /* ------------------------------------------------------------------ */
