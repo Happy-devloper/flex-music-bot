@@ -66,6 +66,10 @@ interface ActiveCallState {
   paused: boolean;
 }
 
+type PlayProgressStage = 'searching' | 'downloading' | 'downloaded' | 'startingPlayback' | 'playbackStarted';
+
+type PlayProgressFn = (stage: PlayProgressStage) => void | Promise<void>;
+
 interface VoiceResult {
   ok: boolean;
   message: string;
@@ -76,6 +80,7 @@ interface VoiceResult {
   queueId?: string;
   title?: string;
   url?: string;
+  ready?: Promise<void>;
 }
 
 interface QueuedTrack {
@@ -360,7 +365,7 @@ export class VoiceAssistant {
     }
   }
 
-  public async play(chatId: number, query: string): Promise<VoiceResult> {
+  public async play(chatId: number, query: string, progress?: PlayProgressFn): Promise<VoiceResult> {
     await this.connect();
 
     const missingTool = getMissingPlaybackTool();
@@ -371,6 +376,8 @@ export class VoiceAssistant {
         message: `${missingTool} is not installed or not on PATH. Install ${missingTool}, restart the bot, then try /play again.`
       };
     }
+
+    await notifyPlayProgress(progress, 'searching');
 
     let state = this.activeCalls.get(chatId);
 
@@ -397,18 +404,21 @@ export class VoiceAssistant {
     }
 
     if (state.playback || state.preparing) {
-      state.queue.push(createQueuedTrack(query));
+      const track = createQueuedTrack(query, progress);
+      state.queue.push(track);
       return {
         ok: true,
         message: `Queued and downloading: ${query}\nPosition: ${state.queue.length}`,
         status: 'queued',
         query,
         position: state.queue.length,
-        queueId: state.queue.at(-1)?.id
+        queueId: state.queue.at(-1)?.id,
+        ready: track.preparedAudio.then(() => undefined).catch(() => undefined)
       };
     }
 
-    return this.startPlayback(chatId, state, query);
+    const track = createQueuedTrack(query, progress);
+    return this.startPlayback(chatId, state, track, progress);
   }
 
   public async pause(chatId: number): Promise<VoiceResult> {
@@ -523,8 +533,15 @@ export class VoiceAssistant {
     if (!track) {
       return { ok: false, message: 'That queued song is no longer available.' };
     }
+
     stopPlayback(state);
-    return this.startPlayback(chatId, state, track);
+    const result = await this.startPlayback(chatId, state, track);
+
+    if (!result.ok) {
+      state.queue.unshift(track);
+    }
+
+    return result;
   }
 
   public async getQueue(chatId: number): Promise<string> {
@@ -600,9 +617,10 @@ export class VoiceAssistant {
   private async startPlayback(
     chatId: number,
     state: ActiveCallState,
-    trackOrQuery: QueuedTrack | string
+    trackOrQuery: QueuedTrack | string,
+    progress?: PlayProgressFn
   ): Promise<VoiceResult> {
-    const track = typeof trackOrQuery === 'string' ? createQueuedTrack(trackOrQuery) : trackOrQuery;
+    const track = typeof trackOrQuery === 'string' ? createQueuedTrack(trackOrQuery, progress) : trackOrQuery;
     let playback: PlaybackProcess | undefined;
 
     try {
@@ -644,6 +662,7 @@ export class VoiceAssistant {
           });
         });
 
+      await notifyPlayProgress(progress, 'startingPlayback');
       await state.session.stream({
         readable: playback.audio,
         listeners: {
@@ -664,6 +683,7 @@ export class VoiceAssistant {
 
       const durationSeconds = getRawAudioDurationSeconds(playback.filePath);
       this.emitTrackStarted(chatId, playback, durationSeconds);
+      await notifyPlayProgress(progress, 'playbackStarted');
 
       return {
         ok: true,
@@ -828,8 +848,14 @@ function createSilentPcmStream(): Readable {
   return stream;
 }
 
-function createQueuedTrack(query: string): QueuedTrack {
-  const preparedAudio = prepareAudioFile(query);
+function createQueuedTrack(query: string, progress?: PlayProgressFn): QueuedTrack {
+  const preparedAudio = (async () => {
+    await notifyPlayProgress(progress, 'downloading');
+    const audio = await prepareAudioFile(query);
+    await notifyPlayProgress(progress, 'downloaded');
+    return audio;
+  })();
+
   preparedAudio.catch((error: unknown) => {
     logger.warn('Queued audio download failed', { query, error: formatError(error) });
   });
@@ -859,19 +885,17 @@ async function prepareAudioFile(query: string): Promise<PreparedAudio> {
 
   try {
     const ytDlpArgs = [
-  '--js-runtimes',
-  'node',
-  '--no-playlist',
-  '--force-ipv4',
-  '--extractor-args',
-  'youtube:player_client=web',
-  '--print',
-  'after_move:%(title)s\\t%(webpage_url)s',
-  '-f',
-  'ba[ext=m4a]/ba/bestaudio/best',
-  '-o',
-  outputTemplate
-];
+      '--no-playlist',
+      '--force-ipv4',
+      '--extractor-args',
+      'youtube:player_client=android,web',
+      '--print',
+      'after_move:%(title)s\\t%(webpage_url)s',
+      '-f',
+      'ba[ext=m4a]/ba/bestaudio/best',
+      '-o',
+      outputTemplate
+    ];
 
     // Add cookies if configured
     if (config.ytDlpCookies) {
@@ -979,6 +1003,18 @@ function cleanupQueuedTracks(queue: QueuedTrack[]): void {
   }
 
   queue.length = 0;
+}
+
+async function notifyPlayProgress(progress: PlayProgressFn | undefined, stage: PlayProgressStage): Promise<void> {
+  if (!progress) {
+    return;
+  }
+
+  try {
+    await progress(stage);
+  } catch (error) {
+    logger.warn('Playback progress callback failed', { stage, error: formatError(error) });
+  }
 }
 
 function getRawAudioDurationSeconds(filePath: string): number {
