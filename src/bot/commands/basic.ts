@@ -49,12 +49,7 @@ interface PlaybackPanelPayload {
 const queuedSongMessages = new Map<string, SongMessage>();
 const playingSongMessages = new Map<number, SongMessage>();
 
-const PROGRESS_INTERVAL_MS = 5_000;          // update every 5 seconds
 const TITLE_MAX_LENGTH = 55;
-const PROGRESS_BAR_SEGMENTS = 12;
-
-let activeBot: Bot | undefined;
-let progressTicker: NodeJS.Timeout | undefined;
 
 /* ------------------------------------------------------------------ */
 /*  Command descriptions for /help                                     */
@@ -78,9 +73,6 @@ const commandDescriptions = [
 /*  MAIN REGISTRATION                                                  */
 /* ================================================================== */
 export function registerBasicCommands(bot: Bot): void {
-  activeBot = bot;
-  startProgressTicker();
-
   // ----- simple commands ------------------------------------------------
   bot.command('start', async (ctx) => {
     const name = ctx.from?.first_name ?? 'there';
@@ -582,7 +574,7 @@ function buildPausedMessage(payload: PlaybackPanelPayload): string {
 function buildStoppedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  return ['⏹ <b>Playback Stopped</b>', '', `🎶 <b>Title:</b> ${title}`, '🎚️ — — —', requester].join('\n');
+  return ['⏹ <b>Playback Stopped</b>', '', `🎶 <b>Title:</b> ${title}`, requester].join('\n');
 }
 
 function buildSkippedMessage(payload: PlaybackPanelPayload): string {
@@ -678,7 +670,7 @@ function buildPlaybackKeyboard(paused: boolean): InlineKeyboard {
 }
 
 function buildStoppedKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text('▶ Resume / Replay', 'music:resume');
+  return new InlineKeyboard().text('— — — —', 'music:resume');
 }
 
 function buildQueuePlayNowKeyboard(queueId: string): InlineKeyboard {
@@ -888,37 +880,6 @@ function createTemporaryStatusTracker(ctx: Context): TemporaryStatusTracker {
       await deleteCurrent();
     }
   };
-}
-
-/* ------------------------------------------------------------------ */
-/*  Progress ticker                                                    */
-/* ------------------------------------------------------------------ */
-function startProgressTicker(): void {
-  if (progressTicker) return;
-  progressTicker = setInterval(() => {
-    if (!activeBot) return;
-    for (const msg of playingSongMessages.values()) {
-      if (!msg.chatId || !msg.messageId || !msg.startedAt) continue;
-      if (msg.status !== 'playing' && msg.status !== 'resumed') continue;
-      // Re-send the panel to update the progress bar
-      void updatePlaybackPanel(
-        activeBot,
-        msg,
-        {
-          chatId: msg.chatId,
-          status: msg.status,
-          title: msg.title,
-          url: msg.url,
-          requester: msg.requester,
-          durationSeconds: msg.durationSeconds,
-          queueId: msg.queueId,
-          message: msg.title ?? 'Playing',
-          startedAt: msg.startedAt,
-        },
-        { reply_markup: buildPlaybackKeyboard(false) }
-      ).catch(() => undefined);
-    }
-  }, PROGRESS_INTERVAL_MS);
 }
 
 /* ------------------------------------------------------------------ */
