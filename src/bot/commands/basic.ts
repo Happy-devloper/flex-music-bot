@@ -559,13 +559,11 @@ function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
   const duration = payload.durationSeconds ? `${formatDuration(payload.durationSeconds)} min` : '--:-- min';
   const requester = formatRequester(payload.requester);
-  const progress = buildProgressLine(payload.durationSeconds, payload.startedAt);
   return [
     '🎵 <b>Started streaming</b>',
     '',
     `🎶 <b>Title:</b> ${title}`,
     `🕛 <b>Duration:</b> ${duration}`,
-    progress,
     requester
   ].join('\n');
 }
@@ -573,12 +571,10 @@ function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
 function buildPausedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  const progress = buildProgressLine(payload.durationSeconds, payload.startedAt);
   return [
     '⏸ <b>Paused</b>',
     '',
     `🎶 <b>Title:</b> ${title}`,
-    progress,
     requester
   ].join('\n');
 }
@@ -586,7 +582,7 @@ function buildPausedMessage(payload: PlaybackPanelPayload): string {
 function buildStoppedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  return ['⏹ <b>Playback Stopped</b>', '', `🎶 <b>Title:</b> ${title}`, requester].join('\n');
+  return ['⏹ <b>Playback Stopped</b>', '', `🎶 <b>Title:</b> ${title}`, '🎚️ — — —', requester].join('\n');
 }
 
 function buildSkippedMessage(payload: PlaybackPanelPayload): string {
@@ -618,32 +614,6 @@ function buildStatusMessage(payload: PlaybackPanelPayload): string {
     default:
       return buildNowPlayingMessage(payload);
   }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Progress bar                                                       */
-/* ------------------------------------------------------------------ */
-function buildProgressLine(
-  durationSeconds?: number,
-  startedAt?: number
-): string {
-  if (!durationSeconds || durationSeconds <= 0) {
-    return '🕒 --:--';
-  }
-  const total = durationSeconds;
-  const elapsed = startedAt
-    ? Math.min(total, Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
-    : 0;
-  const bar = drawProgressBar(elapsed, total);
-  return [`🕒 ${formatDuration(elapsed)} / ${formatDuration(total)}`, bar].join('\n');
-}
-
-function drawProgressBar(elapsed: number, total: number): string {
-  const ratio = Math.min(1, Math.max(0, elapsed / total));
-  const markerIdx = Math.round(ratio * (PROGRESS_BAR_SEGMENTS - 1));
-  const filled = '▬'.repeat(markerIdx);
-  const empty = '▬'.repeat(PROGRESS_BAR_SEGMENTS - 1 - markerIdx);
-  return `${filled}◉${empty}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -708,7 +678,7 @@ function buildPlaybackKeyboard(paused: boolean): InlineKeyboard {
 }
 
 function buildStoppedKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text('▶ Resume', 'music:resume');
+  return new InlineKeyboard().text('▶ Resume / Replay', 'music:resume');
 }
 
 function buildQueuePlayNowKeyboard(queueId: string): InlineKeyboard {
