@@ -670,7 +670,7 @@ function buildPlaybackKeyboard(paused: boolean): InlineKeyboard {
 }
 
 function buildStoppedKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text('— — — —', 'music:resume');
+  return new InlineKeyboard().text('-------------', 'music:resume');
 }
 
 function buildQueuePlayNowKeyboard(queueId: string): InlineKeyboard {
