@@ -49,12 +49,9 @@ interface PlaybackPanelPayload {
 const queuedSongMessages = new Map<string, SongMessage>();
 const playingSongMessages = new Map<number, SongMessage>();
 
-const PROGRESS_INTERVAL_MS = 5_000;          // update every 5 seconds
 const TITLE_MAX_LENGTH = 55;
-const PROGRESS_BAR_SEGMENTS = 12;
 
 let activeBot: Bot | undefined;
-let progressTicker: NodeJS.Timeout | undefined;
 
 /* ------------------------------------------------------------------ */
 /*  Command descriptions for /help                                     */
@@ -79,7 +76,6 @@ const commandDescriptions = [
 /* ================================================================== */
 export function registerBasicCommands(bot: Bot): void {
   activeBot = bot;
-  startProgressTicker();
 
   // ----- simple commands ------------------------------------------------
   bot.command('start', async (ctx) => {
@@ -559,13 +555,11 @@ function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
   const duration = payload.durationSeconds ? `${formatDuration(payload.durationSeconds)} min` : '--:-- min';
   const requester = formatRequester(payload.requester);
-  const progress = buildProgressLine(payload.durationSeconds, payload.startedAt);
   return [
     '🎵 <b>Started streaming</b>',
     '',
     `🎶 <b>Title:</b> ${title}`,
     `🕛 <b>Duration:</b> ${duration}`,
-    progress,
     requester
   ].join('\n');
 }
@@ -573,12 +567,10 @@ function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
 function buildPausedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  const progress = buildProgressLine(payload.durationSeconds, payload.startedAt);
   return [
     '⏸ <b>Paused</b>',
     '',
     `🎶 <b>Title:</b> ${title}`,
-    progress,
     requester
   ].join('\n');
 }
@@ -618,32 +610,6 @@ function buildStatusMessage(payload: PlaybackPanelPayload): string {
     default:
       return buildNowPlayingMessage(payload);
   }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Progress bar                                                       */
-/* ------------------------------------------------------------------ */
-function buildProgressLine(
-  durationSeconds?: number,
-  startedAt?: number
-): string {
-  if (!durationSeconds || durationSeconds <= 0) {
-    return '🕒 --:--';
-  }
-  const total = durationSeconds;
-  const elapsed = startedAt
-    ? Math.min(total, Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
-    : 0;
-  const bar = drawProgressBar(elapsed, total);
-  return [`🕒 ${formatDuration(elapsed)} / ${formatDuration(total)}`, bar].join('\n');
-}
-
-function drawProgressBar(elapsed: number, total: number): string {
-  const ratio = Math.min(1, Math.max(0, elapsed / total));
-  const markerIdx = Math.round(ratio * (PROGRESS_BAR_SEGMENTS - 1));
-  const filled = '▬'.repeat(markerIdx);
-  const empty = '▬'.repeat(PROGRESS_BAR_SEGMENTS - 1 - markerIdx);
-  return `${filled}◉${empty}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -907,37 +873,6 @@ function createTemporaryStatusTracker(ctx: Context): TemporaryStatusTracker {
       await deleteCurrent();
     }
   };
-}
-
-/* ------------------------------------------------------------------ */
-/*  Progress ticker                                                    */
-/* ------------------------------------------------------------------ */
-function startProgressTicker(): void {
-  if (progressTicker) return;
-  progressTicker = setInterval(() => {
-    if (!activeBot) return;
-    for (const msg of playingSongMessages.values()) {
-      if (!msg.chatId || !msg.messageId || !msg.startedAt) continue;
-      if (msg.status !== 'playing' && msg.status !== 'resumed') continue;
-      // Re-send the panel to update the progress bar
-      void updatePlaybackPanel(
-        activeBot,
-        msg,
-        {
-          chatId: msg.chatId,
-          status: msg.status,
-          title: msg.title,
-          url: msg.url,
-          requester: msg.requester,
-          durationSeconds: msg.durationSeconds,
-          queueId: msg.queueId,
-          message: msg.title ?? 'Playing',
-          startedAt: msg.startedAt,
-        },
-        { reply_markup: buildPlaybackKeyboard(false) }
-      ).catch(() => undefined);
-    }
-  }, PROGRESS_INTERVAL_MS);
 }
 
 /* ------------------------------------------------------------------ */
