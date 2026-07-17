@@ -552,10 +552,10 @@ function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
   const duration = payload.durationSeconds ? `${formatDuration(payload.durationSeconds)} min` : '--:-- min';
   const requester = formatRequester(payload.requester);
   return [
-    '🎵 <b>Started streaming</b>',
+    '♫ <b>Now Playing</b>',
     '',
-    `🎶 <b>Title:</b> ${title}`,
-    `🕛 <b>Duration:</b> ${duration}`,
+    `♪ <b>Title:</b> ${title}`,
+    `◷ <b>Duration:</b> ${duration}`,
     requester
   ].join('\n');
 }
@@ -564,9 +564,9 @@ function buildPausedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
   return [
-    '⏸ <b>Paused</b>',
+    '❚❚ <b>Paused</b>',
     '',
-    `🎶 <b>Title:</b> ${title}`,
+    `♪ <b>Title:</b> ${title}`,
     requester
   ].join('\n');
 }
@@ -574,20 +574,20 @@ function buildPausedMessage(payload: PlaybackPanelPayload): string {
 function buildStoppedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  return ['⏹ <b>Playback Stopped</b>', '', `🎶 <b>Title:</b> ${title}`, requester].join('\n');
+  return ['■ <b>Stopped</b>', '', `♪ <b>Title:</b> ${title}`, requester].join('\n');
 }
 
 function buildSkippedMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
   const requester = formatRequester(payload.requester);
-  return ['⏭ <b>Skipped</b>', '', `🎶 <b>Title:</b> ${title}`, requester].join('\n');
+  return ['↺ <b>Skipped</b>', '', `♪ <b>Title:</b> ${title}`, requester].join('\n');
 }
 
 function buildQueueMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
   const requester = formatRequester(payload.requester);
-  const position = payload.position ? `📋 Position: #${payload.position}` : '';
-  return ['➕ <b>Added to Queue</b>', '', `🎶 <b>Title:</b> ${title}`, position, requester].filter(Boolean).join('\n');
+  const position = payload.position ? `• Position: #${payload.position}` : '';
+  return ['≡ <b>Queued</b>', '', `♪ <b>Title:</b> ${title}`, position, requester].filter(Boolean).join('\n');
 }
 
 function buildStatusMessage(payload: PlaybackPanelPayload): string {
@@ -641,20 +641,20 @@ function truncateTitle(title: string): string {
 /*  Requester formatting                                               */
 /* ------------------------------------------------------------------ */
 function formatRequester(user?: Context['from']): string {
-  if (!user) return '🙍🏻 <b>Requested by:</b> Unknown';
+  if (!user) return '⊚ <b>Requested by:</b> Unknown';
 
   const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Unknown User';
   const safeName = escapeHtml(displayName);
 
   if (user.username) {
-    return `🙍🏻 <b>Requested by:</b> <a href="https://t.me/${user.username}">${safeName}</a>`;
+    return `⊚ <b>Requested by:</b> <a href="https://t.me/${user.username}">${safeName}</a>`;
   }
 
   if (user.id) {
-    return `🙍🏻 <b>Requested by:</b> <a href="tg://user?id=${user.id}">${safeName}</a>`;
+    return `⊚ <b>Requested by:</b> <a href="tg://user?id=${user.id}">${safeName}</a>`;
   }
 
-  return `🙍🏻 <b>Requested by:</b> ${safeName}`;
+  return `⊚ <b>Requested by:</b> ${safeName}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -662,15 +662,15 @@ function formatRequester(user?: Context['from']): string {
 /* ------------------------------------------------------------------ */
 function buildPlaybackKeyboard(paused: boolean): InlineKeyboard {
   return new InlineKeyboard()
-    .text('⏮', 'music:previous')
-    .text(paused ? '▶' : '⏸', paused ? 'music:resume' : 'music:pause')
-    .text('🔁', 'music:loop')
-    .text('⏭', 'music:skip')
-    .text('⏹', 'music:stop');
+    .text('◀', 'music:previous')
+    .text(paused ? '▶' : '❚❚', paused ? 'music:resume' : 'music:pause')
+    .text('↺', 'music:loop')
+    .text('▶', 'music:skip')
+    .text('■', 'music:stop');
 }
 
 function buildStoppedKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text('-------------', 'music:resume');
+  return new InlineKeyboard().text('─ ─ ─', 'music:resume');
 }
 
 function buildQueuePlayNowKeyboard(queueId: string): InlineKeyboard {
@@ -850,11 +850,11 @@ function createTemporaryStatusTracker(ctx: Context): TemporaryStatusTracker {
   function getMessageForStage(stage: TemporaryStatusTracker['show'] extends (stage: infer S) => Promise<void> ? S : never): string {
     switch (stage) {
       case 'searching':
-        return '🔍 Searching...\n\nFinding the best result...';
+        return '⋯ Searching...\n\nFinding the best result...';
       case 'downloading':
-        return '⬇️ Downloading...\n\nPreparing audio stream...';
+        return '⋯ Downloading...\n\nPreparing audio stream...';
       case 'startingPlayback':
-        return '▶️ Starting Playback...\n\nJoining voice chat...';
+        return '▶ Starting Playback...\n\nJoining voice chat...';
       case 'downloaded':
       case 'playbackStarted':
         return '';
