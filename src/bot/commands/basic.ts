@@ -547,23 +547,29 @@ export function registerBasicCommands(bot: Bot): void {
 /*  HELPER: UI MESSAGE BUILDERS                                        */
 /* ================================================================== */
 
+function buildTrackInfo(payload: PlaybackPanelPayload): string[] {
+  const duration = payload.durationSeconds
+    ? formatDuration(payload.durationSeconds)
+    : '--:--';
+
+  return [
+    `◉ ${duration}`,
+    formatRequester(payload.requester)
+  ];
+}
+
 function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(
     truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'),
     payload.url
   );
 
-  const duration = payload.durationSeconds
-    ? formatDuration(payload.durationSeconds)
-    : '--:--';
-
   return [
     '<b>▶ NOW PLAYING</b>',
     '',
     `<b>${title}</b>`,
     '',
-    `◉ ${duration}`,
-    formatRequester(payload.requester)
+    ...buildTrackInfo(payload)
   ].join('\n');
 }
 
@@ -578,7 +584,7 @@ function buildPausedMessage(payload: PlaybackPanelPayload): string {
     '',
     `<b>${title}</b>`,
     '',
-    formatRequester(payload.requester)
+    ...buildTrackInfo(payload)
   ].join('\n');
 }
 
@@ -608,7 +614,7 @@ function buildSkippedMessage(payload: PlaybackPanelPayload): string {
     '',
     `<b>${title}</b>`,
     '',
-    formatRequester(payload.requester)
+    ...buildTrackInfo(payload)
   ].join('\n');
 }
 
