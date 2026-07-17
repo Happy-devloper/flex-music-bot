@@ -547,91 +547,47 @@ export function registerBasicCommands(bot: Bot): void {
 /*  HELPER: UI MESSAGE BUILDERS                                        */
 /* ================================================================== */
 
-function buildTrackInfo(payload: PlaybackPanelPayload): string[] {
-  const duration = payload.durationSeconds
-    ? formatDuration(payload.durationSeconds)
-    : '--:--';
-
-  return [
-    `◉ ${duration}`,
-    formatRequester(payload.requester)
-  ];
-}
-
 function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(
-    truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'),
-    payload.url
-  );
-
+  const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
+  const duration = payload.durationSeconds ? `${formatDuration(payload.durationSeconds)}` : '--:--';
+  const requester = formatRequester(payload.requester);
   return [
-    '<b>▶ NOW PLAYING</b>',
+    '♫ <b>NOW PLAYING</b>',
     '',
-    `<b>${title}</b>`,
-    '',
-    ...buildTrackInfo(payload)
+    `♪ <b>Title:</b> ${title}`,
+    `◷ <b>Duration:</b> ${duration}`,
+    requester
   ].join('\n');
 }
 
 function buildPausedMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(
-    truncateTitle(payload.title ?? ''),
-    payload.url
-  );
-
+  const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
+  const requester = formatRequester(payload.requester);
   return [
-    '<b>❚❚ PAUSED</b>',
+    '❚❚ <b>PAUSED</b>',
     '',
-    `<b>${title}</b>`,
-    '',
-    ...buildTrackInfo(payload)
+    `♪ <b>Title:</b> ${title}`,
+    requester
   ].join('\n');
 }
 
 function buildStoppedMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(
-    truncateTitle(payload.title ?? ''),
-    payload.url
-  );
-
-  return [
-    '<b>■ STOPPED</b>',
-    '',
-    `<b>${title}</b>`,
-    '',
-    formatRequester(payload.requester)
-  ].join('\n');
+  const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
+  const requester = formatRequester(payload.requester);
+  return ['■ <b>STOPPED</b>', '', `♪ <b>Title:</b> ${title}`, requester].join('\n');
 }
 
 function buildSkippedMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(
-    truncateTitle(payload.title ?? ''),
-    payload.url
-  );
-
-  return [
-    '<b>⏭ SKIPPED</b>',
-    '',
-    `<b>${title}</b>`,
-    '',
-    ...buildTrackInfo(payload)
-  ].join('\n');
+  const title = getLinkedTitle(truncateTitle(payload.title ?? ''), payload.url);
+  const requester = formatRequester(payload.requester);
+  return ['⏭ <b>SKIPPED</b>', '', `♪ <b>Title:</b> ${title}`, requester].join('\n');
 }
 
 function buildQueueMessage(payload: PlaybackPanelPayload): string {
-  const title = getLinkedTitle(
-    truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'),
-    payload.url
-  );
-
-  return [
-    '<b>≡ ADDED TO QUEUE</b>',
-    '',
-    `<b>${title}</b>`,
-    '',
-    payload.position ? `▸ Queue #${payload.position}` : '',
-    formatRequester(payload.requester)
-  ].filter(Boolean).join('\n');
+  const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
+  const requester = formatRequester(payload.requester);
+  const position = payload.position ? `• <b>Position:</b> #${payload.position}` : '';
+  return ['≡ <b>QUEUED</b>', '', `♪ <b>Title:</b> ${title}`, position, requester].filter(Boolean).join('\n');
 }
 
 function buildStatusMessage(payload: PlaybackPanelPayload): string {
@@ -685,26 +641,20 @@ function truncateTitle(title: string): string {
 /*  Requester formatting                                               */
 /* ------------------------------------------------------------------ */
 function formatRequester(user?: Context['from']): string {
-  if (!user) return '◎ Unknown';
+  if (!user) return '⊚ <b>Requested by:</b> Unknown';
 
-  const displayName =
-    [user.first_name, user.last_name]
-      .filter(Boolean)
-      .join(' ') ||
-    user.username ||
-    'Unknown';
-
-  const safe = escapeHtml(displayName);
+  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Unknown User';
+  const safeName = escapeHtml(displayName);
 
   if (user.username) {
-    return `◎ <a href="https://t.me/${user.username}">${safe}</a>`;
+    return `⊚ <b>Requested by:</b> <a href="https://t.me/${user.username}">${safeName}</a>`;
   }
 
   if (user.id) {
-    return `◎ <a href="tg://user?id=${user.id}">${safe}</a>`;
+    return `⊚ <b>Requested by:</b> <a href="tg://user?id=${user.id}">${safeName}</a>`;
   }
 
-  return `◎ ${safe}`;
+  return `⊚ <b>Requested by:</b> ${safeName}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -714,18 +664,17 @@ function buildPlaybackKeyboard(paused: boolean): InlineKeyboard {
   return new InlineKeyboard()
     .text('⏮', 'music:previous')
     .text(paused ? '▶' : '❚❚', paused ? 'music:resume' : 'music:pause')
-    .text('↻', 'music:loop')
+    .text('↺', 'music:loop')
     .text('⏭', 'music:skip')
     .text('■', 'music:stop');
 }
 
 function buildStoppedKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text('─ ─ ─', 'music:resume');
+  return new InlineKeyboard().text('─ ─ ─ ─', 'music:resume');
 }
 
 function buildQueuePlayNowKeyboard(queueId: string): InlineKeyboard {
-  return new InlineKeyboard()
-    .text('▶ PLAY NOW', `music:play-now:${queueId}`);
+  return new InlineKeyboard().text('▶', `music:play-now:${queueId}`);
 }
 
 function getPlayerReplyMarkup(
