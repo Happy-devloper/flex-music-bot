@@ -697,7 +697,7 @@ export class VoiceAssistant {
                 title: activePlayback.title,
                 url: activePlayback.url
               },
-              activePlayback.id
+              randomUUID()
             );
             void this.startPlayback(chatId, state, loopTrack);
             return;
@@ -926,7 +926,7 @@ function createQueuedTrack(query: string, progress?: PlayProgressFn): QueuedTrac
 function createQueuedTrackFromPreparedAudio(
   query: string,
   preparedAudio: PreparedAudio,
-  id = randomUUID()
+  id: string = randomUUID()
 ): QueuedTrack {
   return {
     id,
