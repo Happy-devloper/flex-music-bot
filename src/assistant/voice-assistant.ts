@@ -950,16 +950,48 @@ async function prepareAudioFile(query: string): Promise<PreparedAudio> {
   const source = isHttpUrl(query) ? query : `ytsearch1:${query}`;
   const attempts = [
     {
-      label: 'default',
-      args: ['--no-playlist', '--force-ipv4', '--print', 'after_move:%(title)s\\t%(webpage_url)s', '-f', 'bestaudio/best', '-o']
-    },
-    {
-      label: 'web-client',
-      args: ['--no-playlist', '--force-ipv4', '--extractor-args', 'youtube:player_client=web', '--print', 'after_move:%(title)s\\t%(webpage_url)s', '-f', 'bestaudio/best', '-o']
+      label: 'web-client-fallback',
+      args: [
+        '--no-playlist',
+        '--force-ipv4',
+        '--extractor-args',
+        'youtube:player_client=web,player_skip=webpage',
+        '--print',
+        'after_move:%(title)s\\t%(webpage_url)s',
+        '-f',
+        'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best',
+        '-o'
+      ]
     },
     {
       label: 'android-client',
-      args: ['--no-playlist', '--force-ipv4', '--extractor-args', 'youtube:player_client=android', '--print', 'after_move:%(title)s\\t%(webpage_url)s', '-f', 'bestaudio/best', '-o']
+      args: [
+        '--no-playlist',
+        '--force-ipv4',
+        '--extractor-args',
+        'youtube:player_client=android',
+        '--print',
+        'after_move:%(title)s\\t%(webpage_url)s',
+        '-f',
+        'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best',
+        '-o'
+      ]
+    },
+    {
+      label: 'default-best',
+      args: [
+        '--no-playlist',
+        '--force-ipv4',
+        '--print',
+        'after_move:%(title)s\\t%(webpage_url)s',
+        '-f',
+        'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best',
+        '-o'
+      ]
+    },
+    {
+      label: 'no-format-selection',
+      args: ['--no-playlist', '--force-ipv4', '--print', 'after_move:%(title)s\\t%(webpage_url)s', '-o']
     }
   ];
 
