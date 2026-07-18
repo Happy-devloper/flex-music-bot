@@ -48,6 +48,7 @@ interface PlaybackPanelPayload {
 /* ------------------------------------------------------------------ */
 const queuedSongMessages = new Map<string, SongMessage>();
 const playingSongMessages = new Map<number, SongMessage>();
+const loopEnabledByChat = new Map<number, boolean>();
 
 const TITLE_MAX_LENGTH = 55;
 
@@ -159,7 +160,7 @@ export function registerBasicCommands(bot: Bot): void {
     const markup =
       payload.status === 'queued' && payload.queueId
         ? buildQueuePlayNowKeyboard(payload.queueId)
-        : buildPlaybackKeyboard(false);
+        : buildPlaybackKeyboard(false, loopEnabledByChat.get(ctx.chat.id) ?? false);
 
     const sent = await sendPlaybackPanel(bot, undefined, payload, { reply_markup: markup });
     rememberSongMessage(result, {
@@ -207,7 +208,7 @@ export function registerBasicCommands(bot: Bot): void {
           message: result.message,
           startedAt: msg.startedAt,
         },
-        { reply_markup: buildPlaybackKeyboard(true) }
+        { reply_markup: buildPlaybackKeyboard(true, loopEnabledByChat.get(ctx.chat.id) ?? false) }
       );
       return;
     }
@@ -239,7 +240,7 @@ export function registerBasicCommands(bot: Bot): void {
           message: result.message,
           startedAt: msg.startedAt,
         },
-        { reply_markup: buildPlaybackKeyboard(false) }
+        { reply_markup: buildPlaybackKeyboard(false, loopEnabledByChat.get(ctx.chat.id) ?? false) }
       );
       return;
     }
@@ -353,7 +354,7 @@ export function registerBasicCommands(bot: Bot): void {
       startedAt: result.status === 'playing' ? Date.now() : undefined,
     };
 
-    await updatePlaybackPanel(bot, currentMsg, payload, { reply_markup: buildPlaybackKeyboard(false) });
+    await updatePlaybackPanel(bot, currentMsg, payload, { reply_markup: buildPlaybackKeyboard(false, loopEnabledByChat.get(currentMsg.chatId) ?? false) });
     rememberSongMessage(result, {
       chatId: currentMsg.chatId,
       messageId: currentMsg.messageId,
@@ -384,7 +385,7 @@ export function registerBasicCommands(bot: Bot): void {
         queueId: msg.queueId,
         message: result.message,
         startedAt: msg.startedAt,
-      }, { reply_markup: buildPlaybackKeyboard(true) });
+      }, { reply_markup: buildPlaybackKeyboard(true, loopEnabledByChat.get(msg.chatId) ?? false) });
       return;
     }
     if (ctx.chat) await ctx.reply(result.message);
@@ -407,7 +408,7 @@ export function registerBasicCommands(bot: Bot): void {
         queueId: msg.queueId,
         message: result.message,
         startedAt: msg.startedAt,
-      }, { reply_markup: buildPlaybackKeyboard(false) });
+      }, { reply_markup: buildPlaybackKeyboard(false, loopEnabledByChat.get(msg.chatId) ?? false) });
       return;
     }
     if (ctx.chat) await ctx.reply(result.message);
@@ -465,9 +466,29 @@ export function registerBasicCommands(bot: Bot): void {
     await ctx.reply(await voiceAssistant.getQueue(ctx.chat.id));
   });
 
-  // Loop button (informative)
+  // Loop button
   bot.callbackQuery('music:loop', async (ctx) => {
-    await ctx.answerCallbackQuery('Loop mode is not available in this build.');
+    const chatId = ctx.chat?.id ?? 0;
+    const result = await voiceAssistant.toggleLoop(chatId);
+    if (ctx.chat) {
+      loopEnabledByChat.set(chatId, result.loopEnabled ?? false);
+    }
+    await ctx.answerCallbackQuery(result.message);
+
+    const msg = ctx.chat ? playingSongMessages.get(ctx.chat.id) : undefined;
+    if (result.ok && msg) {
+      await updatePlaybackPanel(bot, msg, {
+        chatId: msg.chatId,
+        status: msg.status === 'paused' ? 'paused' : 'resumed',
+        title: msg.title,
+        url: msg.url,
+        requester: msg.requester,
+        durationSeconds: msg.durationSeconds,
+        queueId: msg.queueId,
+        message: result.message,
+        startedAt: msg.startedAt,
+      }, { reply_markup: buildPlaybackKeyboard(msg.status === 'paused', loopEnabledByChat.get(msg.chatId) ?? false) });
+    }
   });
 
   // Completed button (informative)
@@ -660,13 +681,13 @@ function formatRequester(user?: Context['from']): string {
 /* ------------------------------------------------------------------ */
 /*  Keyboards                                                          */
 /* ------------------------------------------------------------------ */
-function buildPlaybackKeyboard(paused: boolean): InlineKeyboard {
+function buildPlaybackKeyboard(paused: boolean, loopEnabled = false): InlineKeyboard {
   return new InlineKeyboard()
-  .text('◁', 'music:previous')
-  .text(paused ? '▷' : '❙❙', paused ? 'music:resume' : 'music:pause')
-  .text('↻', 'music:loop')
-  .text('▷▷', 'music:skip')
-  .text('■', 'music:stop');
+    .text('◀', 'music:previous')
+    .text(paused ? '▶' : '❚❚', paused ? 'music:resume' : 'music:pause')
+    .text(loopEnabled ? '↻' : '↺', 'music:loop')
+    .text('▶|', 'music:skip')
+    .text('■', 'music:stop');
 }
 
 function buildStoppedKeyboard(): InlineKeyboard {
