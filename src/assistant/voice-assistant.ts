@@ -947,74 +947,87 @@ async function createPlaybackProcess(track: QueuedTrack): Promise<PlaybackProces
 async function prepareAudioFile(query: string): Promise<PreparedAudio> {
   mkdirSync(VOICE_CACHE_DIR, { recursive: true });
 
-  const workDir = mkdtempSync(path.join(VOICE_CACHE_DIR, 'track-'));
-  const outputTemplate = path.join(workDir, 'source.%(ext)s');
   const source = isHttpUrl(query) ? query : `ytsearch1:${query}`;
+  const attempts = [
+    {
+      label: 'default',
+      args: ['--no-playlist', '--force-ipv4', '--print', 'after_move:%(title)s\\t%(webpage_url)s', '-f', 'bestaudio/best', '-o']
+    },
+    {
+      label: 'web-client',
+      args: ['--no-playlist', '--force-ipv4', '--extractor-args', 'youtube:player_client=web', '--print', 'after_move:%(title)s\\t%(webpage_url)s', '-f', 'bestaudio/best', '-o']
+    },
+    {
+      label: 'android-client',
+      args: ['--no-playlist', '--force-ipv4', '--extractor-args', 'youtube:player_client=android', '--print', 'after_move:%(title)s\\t%(webpage_url)s', '-f', 'bestaudio/best', '-o']
+    }
+  ];
 
-  try {
-    const ytDlpArgs = [
-      '--no-playlist',
-      '--force-ipv4',
-      '--extractor-args',
-      'youtube:player_client=android,web',
-      '--print',
-      'after_move:%(title)s\\t%(webpage_url)s',
-      '-f',
-      'ba[ext=m4a]/ba/bestaudio/best',
-      '-o',
-      outputTemplate
-    ];
+  let lastError: unknown;
 
-    // Add cookies if configured
-    if (config.ytDlpCookies) {
-      // Check if it's a file path (contains / or \) or a browser name
-      if (config.ytDlpCookies.includes('/') || config.ytDlpCookies.includes('\\')) {
-        ytDlpArgs.push('--cookies', config.ytDlpCookies);
-      } else {
-        ytDlpArgs.push('--cookies-from-browser', config.ytDlpCookies);
+  for (const attempt of attempts) {
+    const workDir = mkdtempSync(path.join(VOICE_CACHE_DIR, 'track-'));
+    const outputTemplate = path.join(workDir, 'source.%(ext)s');
+
+    try {
+      const ytDlpArgs = [...attempt.args, outputTemplate];
+
+      // Add cookies if configured
+      if (config.ytDlpCookies) {
+        // Check if it's a file path (contains / or \) or a browser name
+        if (config.ytDlpCookies.includes('/') || config.ytDlpCookies.includes('\\')) {
+          ytDlpArgs.splice(1, 0, '--cookies', config.ytDlpCookies);
+        } else {
+          ytDlpArgs.splice(1, 0, '--cookies-from-browser', config.ytDlpCookies);
+        }
       }
+
+      // Add additional fallback strategies to avoid bot detection
+      ytDlpArgs.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+      ytDlpArgs.push(source);
+
+      const metadataOutput = await runProcess(resolveYtDlpPath(), ytDlpArgs);
+
+      const downloaded = readdirSync(workDir)
+        .map((file) => path.join(workDir, file))
+        .find((file) => path.basename(file).startsWith('source.'));
+
+      if (!downloaded) {
+        throw new Error(`yt-dlp did not produce an audio file (${attempt.label}).`);
+      }
+
+      const rawPath = path.join(VOICE_CACHE_DIR, `${randomUUID()}.raw`);
+      await runProcess(resolveFfmpegPath(), [
+        '-y',
+        '-hide_banner',
+        '-loglevel',
+        'warning',
+        '-i',
+        downloaded,
+        '-f',
+        's16le',
+        '-ar',
+        '48000',
+        '-ac',
+        '1',
+        rawPath
+      ]);
+
+      const metadata = parseTrackMetadata(metadataOutput, query);
+      return { filePath: rawPath, ...metadata };
+    } catch (error) {
+      lastError = error;
+      logger.warn('yt-dlp playback attempt failed', {
+        query,
+        strategy: attempt.label,
+        error: formatError(error)
+      });
+    } finally {
+      rmSync(workDir, { force: true, recursive: true });
     }
-
-    // Add additional fallback strategies to avoid bot detection
-    ytDlpArgs.push(
-      '--user-agent',
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    );
-
-    ytDlpArgs.push(source);
-
-    const metadataOutput = await runProcess(resolveYtDlpPath(), ytDlpArgs);
-
-    const downloaded = readdirSync(workDir)
-      .map((file) => path.join(workDir, file))
-      .find((file) => path.basename(file).startsWith('source.'));
-
-    if (!downloaded) {
-      throw new Error('yt-dlp did not produce an audio file.');
-    }
-
-    const rawPath = path.join(VOICE_CACHE_DIR, `${randomUUID()}.raw`);
-    await runProcess(resolveFfmpegPath(), [
-      '-y',
-      '-hide_banner',
-      '-loglevel',
-      'warning',
-      '-i',
-      downloaded,
-      '-f',
-      's16le',
-      '-ar',
-      '48000',
-      '-ac',
-      '1',
-      rawPath
-    ]);
-
-    const metadata = parseTrackMetadata(metadataOutput, query);
-    return { filePath: rawPath, ...metadata };
-  } finally {
-    rmSync(workDir, { force: true, recursive: true });
   }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 function runProcess(command: string, args: string[]): Promise<string> {
