@@ -14,6 +14,7 @@ interface VoiceResult {
   title?: string;
   url?: string;
   ready?: Promise<void>;
+  loopEnabled?: boolean;
 }
 
 interface TrackPlaybackEvent {
@@ -129,6 +130,14 @@ export class PyTgCallsVoiceAssistant {
   public async resume(chatId: number): Promise<VoiceResult> {
     await this.connect();
     return this.send('resume', { chatId });
+  }
+
+  public async toggleLoop(chatId: number): Promise<VoiceResult> {
+    void chatId;
+    return {
+      ok: false,
+      message: 'Loop mode is available when VOICE_ENGINE is set to gram-tgcalls.'
+    };
   }
 
   public async skip(chatId: number): Promise<VoiceResult> {
