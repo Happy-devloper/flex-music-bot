@@ -65,6 +65,7 @@ interface ActiveCallState {
   preparing: boolean;
   currentPlaybackRequestId?: string;
   paused: boolean;
+  loopMode: 'off' | 'track';
 }
 
 type PlayProgressStage = 'searching' | 'downloading' | 'downloaded' | 'startingPlayback' | 'playbackStarted';
@@ -82,6 +83,7 @@ interface VoiceResult {
   title?: string;
   url?: string;
   ready?: Promise<void>;
+  loopEnabled?: boolean;
 }
 
 interface QueuedTrack {
@@ -295,7 +297,8 @@ export class VoiceAssistant {
         silence,
         callKey,
         preparing: false,
-        paused: false
+        paused: false,
+        loopMode: 'off'
       });
 
       await GroupModel.updateOne(
@@ -490,6 +493,25 @@ export class VoiceAssistant {
     };
   }
 
+  public async toggleLoop(chatId: number): Promise<VoiceResult> {
+    const state = this.activeCalls.get(chatId);
+
+    if (!state) {
+      return {
+        ok: false,
+        message: 'No active voice chat found.'
+      };
+    }
+
+    state.loopMode = state.loopMode === 'track' ? 'off' : 'track';
+
+    return {
+      ok: true,
+      message: state.loopMode === 'track' ? 'Looping current song.' : 'Loop off.',
+      loopEnabled: state.loopMode === 'track'
+    };
+  }
+
   public async skip(chatId: number): Promise<VoiceResult> {
     const state = this.activeCalls.get(chatId);
 
@@ -659,12 +681,30 @@ export class VoiceAssistant {
 
       void activePlayback.finished
         .then(() => {
-          if (this.activeCalls.get(chatId)?.playback === activePlayback) {
-            this.emitTrackFinished(chatId, activePlayback);
-            cleanupFile(activePlayback.filePath);
-            state.playback = undefined;
-            void this.playNext(chatId, state);
+          const currentState = this.activeCalls.get(chatId);
+          if (currentState?.playback !== activePlayback) {
+            return;
           }
+
+          this.emitTrackFinished(chatId, activePlayback);
+          state.playback = undefined;
+
+          if (state.loopMode === 'track') {
+            const loopTrack = createQueuedTrackFromPreparedAudio(
+              activePlayback.query,
+              {
+                filePath: activePlayback.filePath,
+                title: activePlayback.title,
+                url: activePlayback.url
+              },
+              activePlayback.id
+            );
+            void this.startPlayback(chatId, state, loopTrack);
+            return;
+          }
+
+          cleanupFile(activePlayback.filePath);
+          void this.playNext(chatId, state);
         })
         .catch((error: unknown) => {
           logger.warn('Playback stream finished with error', {
@@ -883,6 +923,18 @@ function createQueuedTrack(query: string, progress?: PlayProgressFn): QueuedTrac
   };
 }
 
+function createQueuedTrackFromPreparedAudio(
+  query: string,
+  preparedAudio: PreparedAudio,
+  id = randomUUID()
+): QueuedTrack {
+  return {
+    id,
+    query,
+    preparedAudio: Promise.resolve(preparedAudio)
+  };
+}
+
 async function createPlaybackProcess(track: QueuedTrack): Promise<PlaybackProcess> {
   const preparedAudio = await track.preparedAudio;
   const { filePath, title, url } = preparedAudio;
@@ -901,29 +953,17 @@ async function prepareAudioFile(query: string): Promise<PreparedAudio> {
 
   try {
     const ytDlpArgs = [
-  '--no-playlist',
-  '--force-ipv4',
-
-  // Required for YouTube JS challenge solving
-  '--js-runtimes',
-  'node',
-
-  // Better extractor configuration
-  '--extractor-args',
-  'youtube:player_client=web',
-
-  // Print metadata after download
-  '--print',
-  'after_move:%(title)s\\t%(webpage_url)s',
-
-  // More reliable audio selection
-  '-f',
-  'bestaudio*/best',
-
-  // Output file
-  '-o',
-  outputTemplate
-];
+      '--no-playlist',
+      '--force-ipv4',
+      '--extractor-args',
+      'youtube:player_client=android,web',
+      '--print',
+      'after_move:%(title)s\\t%(webpage_url)s',
+      '-f',
+      'ba[ext=m4a]/ba/bestaudio/best',
+      '-o',
+      outputTemplate
+    ];
 
     // Add cookies if configured
     if (config.ytDlpCookies) {
@@ -1268,4 +1308,3 @@ function forceSessionIpv4Dc(session: StringSession): void {
 
   session.setDC(session.dcId, ipv4Address, 443);
 }
-    
