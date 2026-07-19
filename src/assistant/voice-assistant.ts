@@ -948,52 +948,61 @@ async function prepareAudioFile(query: string): Promise<PreparedAudio> {
   mkdirSync(VOICE_CACHE_DIR, { recursive: true });
 
   const source = isHttpUrl(query) ? query : `ytsearch1:${query}`;
-  const attempts = [
-    {
-      label: 'web-client-fallback',
-      args: [
-        '--no-playlist',
-        '--force-ipv4',
-        '--extractor-args',
-        'youtube:player_client=web,player_skip=webpage',
-        '--print',
-        'after_move:%(title)s\\t%(webpage_url)s',
-        '-f',
-        'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best',
-        '-o'
-      ]
-    },
-    {
-      label: 'android-client',
-      args: [
-        '--no-playlist',
-        '--force-ipv4',
-        '--extractor-args',
-        'youtube:player_client=android',
-        '--print',
-        'after_move:%(title)s\\t%(webpage_url)s',
-        '-f',
-        'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best',
-        '-o'
-      ]
-    },
-    {
-      label: 'default-best',
-      args: [
-        '--no-playlist',
-        '--force-ipv4',
-        '--print',
-        'after_move:%(title)s\\t%(webpage_url)s',
-        '-f',
-        'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[ext=webm]/bestaudio/best',
-        '-o'
-      ]
-    },
-    {
-      label: 'no-format-selection',
-      args: ['--no-playlist', '--force-ipv4', '--print', 'after_move:%(title)s\\t%(webpage_url)s', '-o']
-    }
-  ];
+ const COMMON_ARGS = [
+  '--no-playlist',
+  '--force-ipv4',
+
+  '--js-runtimes',
+  'node',
+
+  '--print',
+  'after_move:%(title)s\\t%(webpage_url)s'
+];
+
+const attempts = [
+  {
+    label: 'web-m4a',
+    args: [
+      ...COMMON_ARGS,
+      '--extractor-args',
+      'youtube:player_client=web',
+      '-f',
+      '140/251/250/249/bestaudio',
+      '-o'
+    ]
+  },
+  {
+    label: 'web-bestaudio',
+    args: [
+      ...COMMON_ARGS,
+      '--extractor-args',
+      'youtube:player_client=web',
+      '-f',
+      'bestaudio',
+      '-o'
+    ]
+  },
+  {
+    label: 'best',
+    args: [
+      ...COMMON_ARGS,
+      '--extractor-args',
+      'youtube:player_client=web',
+      '-f',
+      'best',
+      '-o'
+    ]
+  },
+  {
+    label: 'no-format',
+    args: [
+      ...COMMON_ARGS,
+      '--extractor-args',
+      'youtube:player_client=web',
+      '-o'
+    ]
+  }
+];
 
   let lastError: unknown;
 
