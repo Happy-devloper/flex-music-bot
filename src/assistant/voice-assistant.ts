@@ -7,7 +7,7 @@ import {
   mkdtempSync,
   readdirSync,
   rmSync,
-  statSync, 
+  statSync,
   unlinkSync
 } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -68,7 +68,8 @@ interface ActiveCallState {
   loopMode: 'off' | 'track';
 }
 
-type PlayProgressStage = 'searching' | 'downloading' | 'downloaded' | 'startingPlayback' | 'playbackStarted';
+type PlayProgressStage =
+  'searching' | 'downloading' | 'downloaded' | 'startingPlayback' | 'playbackStarted';
 
 type PlayProgressFn = (stage: PlayProgressStage) => void | Promise<void>;
 
@@ -369,7 +370,11 @@ export class VoiceAssistant {
     }
   }
 
-  public async play(chatId: number, query: string, progress?: PlayProgressFn): Promise<VoiceResult> {
+  public async play(
+    chatId: number,
+    query: string,
+    progress?: PlayProgressFn
+  ): Promise<VoiceResult> {
     await this.connect();
 
     const missingTool = getMissingPlaybackTool();
@@ -645,7 +650,8 @@ export class VoiceAssistant {
   ): Promise<VoiceResult> {
     const playbackRequestId = randomUUID();
     state.currentPlaybackRequestId = playbackRequestId;
-    const track = typeof trackOrQuery === 'string' ? createQueuedTrack(trackOrQuery, progress) : trackOrQuery;
+    const track =
+      typeof trackOrQuery === 'string' ? createQueuedTrack(trackOrQuery, progress) : trackOrQuery;
     let playback: PlaybackProcess | undefined;
 
     try {
@@ -764,7 +770,11 @@ export class VoiceAssistant {
     }
   }
 
-  private emitTrackStarted(chatId: number, playback: PlaybackProcess, durationSeconds: number): void {
+  private emitTrackStarted(
+    chatId: number,
+    playback: PlaybackProcess,
+    durationSeconds: number
+  ): void {
     const event = {
       chatId,
       queueId: playback.id,
@@ -948,61 +958,49 @@ async function prepareAudioFile(query: string): Promise<PreparedAudio> {
   mkdirSync(VOICE_CACHE_DIR, { recursive: true });
 
   const source = isHttpUrl(query) ? query : `ytsearch1:${query}`;
- const COMMON_ARGS = [
-  '--no-playlist',
-  '--force-ipv4',
+  const COMMON_ARGS = [
+    '--no-playlist',
+    '--force-ipv4',
 
-  '--js-runtimes',
-  'node',
+    '--js-runtimes',
+    'node',
 
-  '--print',
-  'after_move:%(title)s\\t%(webpage_url)s'
-];
+    '--print',
+    'after_move:%(title)s\\t%(webpage_url)s'
+  ];
 
-const attempts = [
-  {
-    label: 'web-m4a',
-    args: [
-      ...COMMON_ARGS,
-      '--extractor-args',
-      'youtube:player_client=web',
-      '-f',
-      '140/251/250/249/bestaudio',
-      '-o'
-    ]
-  },
-  {
-    label: 'web-bestaudio',
-    args: [
-      ...COMMON_ARGS,
-      '--extractor-args',
-      'youtube:player_client=web',
-      '-f',
-      'bestaudio',
-      '-o'
-    ]
-  },
-  {
-    label: 'best',
-    args: [
-      ...COMMON_ARGS,
-      '--extractor-args',
-      'youtube:player_client=web',
-      '-f',
-      'best',
-      '-o'
-    ]
-  },
-  {
-    label: 'no-format',
-    args: [
-      ...COMMON_ARGS,
-      '--extractor-args',
-      'youtube:player_client=web',
-      '-o'
-    ]
-  }
-];
+  const attempts = [
+    {
+      label: 'web-m4a',
+      args: [
+        ...COMMON_ARGS,
+        '--extractor-args',
+        'youtube:player_client=web',
+        '-f',
+        '140/251/250/249/bestaudio',
+        '-o'
+      ]
+    },
+    {
+      label: 'web-bestaudio',
+      args: [
+        ...COMMON_ARGS,
+        '--extractor-args',
+        'youtube:player_client=web',
+        '-f',
+        'bestaudio',
+        '-o'
+      ]
+    },
+    {
+      label: 'best',
+      args: [...COMMON_ARGS, '--extractor-args', 'youtube:player_client=web', '-f', 'best', '-o']
+    },
+    {
+      label: 'no-format',
+      args: [...COMMON_ARGS, '--extractor-args', 'youtube:player_client=web', '-o']
+    }
+  ];
 
   let lastError: unknown;
 
@@ -1024,9 +1022,16 @@ const attempts = [
       }
 
       // Add additional fallback strategies to avoid bot detection
-      ytDlpArgs.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+      ytDlpArgs.push(
+        '--user-agent',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      );
       ytDlpArgs.push(source);
-
+      logger.info({
+        strategy: attempt.label,
+        command: resolveYtDlpPath(),
+        args: ytDlpArgs.join(' ')
+      });
       const metadataOutput = await runProcess(resolveYtDlpPath(), ytDlpArgs);
 
       const downloaded = readdirSync(workDir)
@@ -1097,7 +1102,10 @@ function runProcess(command: string, args: string[]): Promise<string> {
   });
 }
 
-function parseTrackMetadata(output: string, fallbackTitle: string): Pick<PreparedAudio, 'title' | 'url'> {
+function parseTrackMetadata(
+  output: string,
+  fallbackTitle: string
+): Pick<PreparedAudio, 'title' | 'url'> {
   const metadataLine = output
     .split(/\r?\n/)
     .reverse()
@@ -1127,7 +1135,10 @@ function cleanupQueuedTracks(queue: QueuedTrack[]): void {
   queue.length = 0;
 }
 
-async function notifyPlayProgress(progress: PlayProgressFn | undefined, stage: PlayProgressStage): Promise<void> {
+async function notifyPlayProgress(
+  progress: PlayProgressFn | undefined,
+  stage: PlayProgressStage
+): Promise<void> {
   if (!progress) {
     return;
   }
