@@ -419,6 +419,9 @@ export function registerBasicCommands(bot: Bot): void {
     await ctx.answerCallbackQuery();
     const chatId = ctx.chat?.id ?? 0;
     const result = await voiceAssistant.skip(chatId);
+    if (ctx.chat) {
+      loopEnabledByChat.set(chatId, result.loopEnabled ?? false);
+    }
     const msg = ctx.chat ? playingSongMessages.get(ctx.chat.id) : undefined;
     if (result.ok && msg) {
       await updatePlaybackPanel(bot, msg, {
@@ -535,7 +538,7 @@ export function registerBasicCommands(bot: Bot): void {
         message: result.message,
         startedAt: result.startedAt,
       },
-      { reply_markup: buildPlaybackKeyboard(false) }
+      { reply_markup: buildPlaybackKeyboard(false, loopEnabledByChat.get(msg.chatId) ?? false) }
     )
       .then((updated) => rememberSongMessage(result, updated))
       .catch(() => undefined);
@@ -682,12 +685,12 @@ function formatRequester(user?: Context['from']): string {
 /*  Keyboards                                                          */
 /* ------------------------------------------------------------------ */
 function buildPlaybackKeyboard(paused: boolean, loopEnabled = false): InlineKeyboard {
- return new InlineKeyboard()
-  .text('◁', 'music:previous')
-  .text(paused ? '▷' : '❙❙', paused ? 'music:resume' : 'music:pause')
-  .text('↻', 'music:loop')
-  .text('▷▷', 'music:skip')
-  .text('■', 'music:stop');
+  return new InlineKeyboard()
+    .text('◀', 'music:previous')
+    .text(paused ? '▶' : '❚❚', paused ? 'music:resume' : 'music:pause')
+    .text(loopEnabled ? '↻' : '↺', 'music:loop')
+    .text('▶|', 'music:skip')
+    .text('■', 'music:stop');
 }
 
 function buildStoppedKeyboard(): InlineKeyboard {
