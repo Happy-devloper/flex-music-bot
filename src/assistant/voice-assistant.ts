@@ -536,12 +536,14 @@ export class VoiceAssistant {
     }
 
     const skipped = state.playback.query;
+    state.loopMode = 'off';
     stopPlayback(state);
     void this.playNext(chatId, state);
 
     return {
       ok: true,
-      message: `Skipped: ${skipped}`
+      message: `Skipped: ${skipped}`,
+      loopEnabled: false
     };
   }
 
@@ -562,6 +564,7 @@ export class VoiceAssistant {
       return { ok: false, message: 'That queued song is no longer available.' };
     }
 
+    state.loopMode = 'off';
     stopPlayback(state);
     const result = await this.startPlayback(chatId, state, track);
 
