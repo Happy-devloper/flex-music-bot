@@ -15,6 +15,7 @@ interface VoiceResult {
   url?: string;
   ready?: Promise<void>;
   loopEnabled?: boolean;
+  needsAssistant?: boolean;
 }
 
 interface TrackPlaybackEvent {
