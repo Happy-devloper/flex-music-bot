@@ -2,30 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import readline from 'node:readline';
 import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
-
-interface VoiceResult {
-  ok: boolean;
-  message: string;
-  status?: 'playing' | 'queued' | 'error' | 'info';
-  query?: string;
-  position?: number;
-  durationSeconds?: number;
-  queueId?: string;
-  title?: string;
-  url?: string;
-  ready?: Promise<void>;
-  loopEnabled?: boolean;
-  needsAssistant?: boolean;
-}
-
-interface TrackPlaybackEvent {
-  chatId: number;
-  queueId: string;
-  query: string;
-  title: string;
-  url?: string;
-  durationSeconds: number;
-}
+import type { VoiceResult, TrackPlaybackEvent } from './types.js';
 
 interface WorkerResponse {
   id: number;
