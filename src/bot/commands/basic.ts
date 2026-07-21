@@ -757,11 +757,11 @@ function formatRequester(user?: Context['from']): string {
 /* ------------------------------------------------------------------ */
 function buildPlaybackKeyboard(paused: boolean, loopEnabled = false): InlineKeyboard {
   return new InlineKeyboard()
-    .text('◀', 'music:previous')
-    .text(paused ? '▶' : '❚❚', paused ? 'music:resume' : 'music:pause')
-    .text(loopEnabled ? '↻' : '↺', 'music:loop')
-    .text('▶|', 'music:skip')
-    .text('■', 'music:stop');
+  .text('◁', 'music:previous')
+  .text(paused ? '▷' : '❙❙', paused ? 'music:resume' : 'music:pause')
+  .text('↻', 'music:loop')
+  .text('▷▷', 'music:skip')
+  .text('■', 'music:stop');
 }
 
 function buildStoppedKeyboard(): InlineKeyboard {
