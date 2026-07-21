@@ -251,8 +251,7 @@ export class VoiceAssistant {
       };
     }
 
-    const callKey = await this.getActiveGroupCallKey(chatId);
-    let callKey: string | null;
+    let callKey: string | null = null;
     try {
       callKey = await this.getActiveGroupCallKey(chatId);
     } catch (error) {
@@ -838,10 +837,6 @@ export class VoiceAssistant {
     }
   }
 
-  private async hasActiveGroupCall(chatId: number): Promise<boolean> {
-    return Boolean(await this.getActiveGroupCallKey(chatId));
-  }
-
   private async isVoiceChatStillActive(chatId: number, state: ActiveCallState): Promise<boolean> {
     try {
       const currentCallKey = await this.getActiveGroupCallKey(chatId);
@@ -887,13 +882,6 @@ export class VoiceAssistant {
   }
 
   private async getFullChat(chatId: number): Promise<Api.TypeChatFull> {
-    if (isSupergroupId(chatId)) {
-      const entity = await this.client.getInputEntity(chatId.toString());
-      const result = await this.client.invoke(
-        new Api.channels.GetFullChannel({
-          channel: entity
-        })
-      );
     try {
       if (isSupergroupId(chatId)) {
         const entity = await this.client.getInputEntity(chatId.toString());
@@ -903,23 +891,15 @@ export class VoiceAssistant {
           })
         );
 
-      return result.fullChat;
-    }
         return result.fullChat;
       }
 
-    const result = await this.client.invoke(
-      new Api.messages.GetFullChat({
-        chatId: bigInt(Math.abs(chatId))
-      })
-    );
       const result = await this.client.invoke(
         new Api.messages.GetFullChat({
           chatId: bigInt(Math.abs(chatId))
         })
       );
 
-    return result.fullChat;
       return result.fullChat;
     } catch (error) {
       logger.warn('Failed to get full chat', { chatId, error: formatError(error) });
@@ -1412,4 +1392,3 @@ function forceSessionIpv4Dc(session: StringSession): void {
 
   session.setDC(session.dcId, ipv4Address, 443);
 }
-
