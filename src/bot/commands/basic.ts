@@ -98,6 +98,19 @@ export function registerBasicCommands(bot: Bot): void {
       return;
     }
     const result = await voiceAssistant.join(ctx.chat.id);
+
+    if (!result.ok && result.needsAssistant) {
+        try {
+            const invite = await ctx.createChatInviteLink({ member_limit: 1, name: 'Auto assistant join' });
+            const joinResult = await voiceAssistant.joinGroupByInvite(invite.invite_link);
+            if (joinResult.ok) {
+                const retryResult = await voiceAssistant.join(ctx.chat.id);
+                await ctx.reply(retryResult.message);
+                return;
+            }
+        } catch { /* ignore and fallback to reply */ }
+    }
+
     await ctx.reply(result.message);
   });
 
@@ -130,6 +143,25 @@ export function registerBasicCommands(bot: Bot): void {
       result = await voiceAssistant.play(ctx.chat.id, query, async (stage) => {
         await progressTracker.show(stage);
       });
+
+      // Automatic assistant add condition
+      if (!result?.ok && result?.needsAssistant) {
+          await progressTracker.clear();
+          try {
+              const invite = await ctx.createChatInviteLink({ member_limit: 1, name: 'Auto assistant play' });
+              const joinResult = await voiceAssistant.joinGroupByInvite(invite.invite_link);
+              if (joinResult.ok) {
+                  // Retry play after successful join
+                  await progressTracker.show('searching');
+                  result = await voiceAssistant.play(ctx.chat.id, query, async (stage) => {
+                      await progressTracker.show(stage);
+                  });
+              }
+          } catch (error) {
+              await ctx.reply('Assistant needs to be added to the group first. Use /menu to add it manually if auto-add fails.');
+              return;
+          }
+      }
     } catch (error) {
       await progressTracker.clear();
       await ctx.reply(error instanceof Error ? error.message : 'Could not prepare your song.');
