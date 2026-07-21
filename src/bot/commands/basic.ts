@@ -285,7 +285,20 @@ export function registerBasicCommands(bot: Bot): void {
 
   // ----- /menu ---------------------------------------------------------
   bot.command('menu', async (ctx) => {
-    await ctx.reply('Use /play to add a song. Playback controls appear in the player message.');
+    if (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup') {
+      await ctx.reply('/menu works inside a Telegram group.');
+      return;
+    }
+
+    const keyboard = new InlineKeyboard()
+      .text('➕ Add Assistant', 'assistant:add')
+      .row()
+      .text('🔄 Refresh Stats', 'stats:refresh');
+
+    await ctx.reply('<b>Music Bot Menu</b>\n\nUse the buttons below to manage the assistant or view stats.', {
+      parse_mode: 'HTML',
+      reply_markup: keyboard,
+    });
   });
 
   // ----- /stats --------------------------------------------------------
@@ -322,12 +335,33 @@ export function registerBasicCommands(bot: Bot): void {
       if (result.ok) {
         await ctx.reply(result.message);
       } else {
-        // If auto-join fails (expired/permission issue), provide invite link for manual add
         await ctx.reply(`${result.message}\n\nInvite link: ${invite.invite_link}\n\nYou can add the assistant account using this link or add it manually and grant necessary permissions.`);
       }
     } catch {
       await ctx.reply('Could not create an assistant invite. Make the bot admin with invite-link permission.');
     }
+  });
+
+  bot.callbackQuery('stats:refresh', async (ctx) => {
+    const [users, groups, queues] = await Promise.all([
+      UserModel.countDocuments(),
+      GroupModel.countDocuments({ isActive: true }),
+      MusicQueueModel.countDocuments(),
+    ]);
+    await ctx.editMessageText(
+      [
+        '<b>Bot Stats (Updated)</b>',
+        `Database: ${isDatabaseConnected() ? 'connected' : 'disconnected'}`,
+        `Users: ${users}`,
+        `Active groups: ${groups}`,
+        `Queues: ${queues}`,
+      ].join('\n'),
+      {
+        parse_mode: 'HTML',
+        reply_markup: new InlineKeyboard().text('➕ Add Assistant', 'assistant:add').row().text('🔄 Refresh Stats', 'stats:refresh')
+      }
+    );
+    await ctx.answerCallbackQuery('Stats updated.');
   });
 
   // Play Now from queue
