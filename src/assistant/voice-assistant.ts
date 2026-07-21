@@ -234,12 +234,7 @@ export class VoiceAssistant {
       callKey = await this.getActiveGroupCallKey(chatId);
     } catch (error) {
       const msg = formatError(error);
-      if (
-        msg.includes('CHANNEL_INVALID') ||
-        msg.includes('PEER_ID_INVALID') ||
-        msg.includes('input entity') ||
-        msg.includes('Could not find')
-      ) {
+      if (this.isAccessError(msg)) {
         return {
           ok: false,
           message: 'Assistant account is not in this group. It needs to be added.',
@@ -830,7 +825,12 @@ export class VoiceAssistant {
       const currentCallKey = await this.getActiveGroupCallKey(chatId);
       return currentCallKey === state.callKey;
     } catch (error) {
-      logger.warn('Could not verify voice chat state', { chatId, error: formatError(error) });
+      const msg = formatError(error);
+      if (this.isAccessError(msg)) {
+          // Assistant lost access
+          return false;
+      }
+      logger.warn('Could not verify voice chat state', { chatId, error: msg });
       return false;
     }
   }
@@ -855,7 +855,10 @@ export class VoiceAssistant {
     try {
       await state.session.stop();
     } catch (error) {
-      logger.warn('Failed to stop stale voice session', { chatId, error: formatError(error) });
+      const msg = formatError(error);
+      if (!msg.includes('GROUPCALL_FORBIDDEN')) {
+          logger.warn('Failed to stop stale voice session', { chatId, error: msg });
+      }
     }
 
     await GroupModel.updateOne(
@@ -890,9 +893,22 @@ export class VoiceAssistant {
 
       return result.fullChat;
     } catch (error) {
-      logger.warn('Failed to get full chat', { chatId, error: formatError(error) });
+      const msg = formatError(error);
+      if (!this.isAccessError(msg)) {
+          logger.warn('Failed to get full chat', { chatId, error: msg });
+      }
       throw error;
     }
+  }
+
+  private isAccessError(msg: string): boolean {
+    return (
+        msg.includes('CHANNEL_INVALID') ||
+        msg.includes('CHANNEL_PRIVATE') ||
+        msg.includes('PEER_ID_INVALID') ||
+        msg.includes('input entity') ||
+        msg.includes('Could not find')
+    );
   }
 }
 
