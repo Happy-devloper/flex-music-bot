@@ -85,6 +85,7 @@ interface VoiceResult {
   url?: string;
   ready?: Promise<void>;
   loopEnabled?: boolean;
+  needsAssistant?: boolean;
 }
 
 interface QueuedTrack {
@@ -259,7 +260,8 @@ export class VoiceAssistant {
       if (msg.includes('CHANNEL_INVALID') || msg.includes('PEER_ID_INVALID')) {
         return {
           ok: false,
-          message: 'Assistant account is not in this group. Use /menu to add it.'
+          message: 'Assistant account is not in this group. It needs to be added.',
+          needsAssistant: true
         };
       }
       return {
@@ -835,6 +837,10 @@ export class VoiceAssistant {
       logger.warn('Queued playback failed', { chatId, query: next.query, message: result.message });
       await this.playNext(chatId, state);
     }
+  }
+
+  private async hasActiveGroupCall(chatId: number): Promise<boolean> {
+    return Boolean(await this.getActiveGroupCallKey(chatId));
   }
 
   private async isVoiceChatStillActive(chatId: number, state: ActiveCallState): Promise<boolean> {
