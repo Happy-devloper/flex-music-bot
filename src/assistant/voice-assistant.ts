@@ -252,6 +252,22 @@ export class VoiceAssistant {
     }
 
     const callKey = await this.getActiveGroupCallKey(chatId);
+    let callKey: string | null;
+    try {
+      callKey = await this.getActiveGroupCallKey(chatId);
+    } catch (error) {
+      const msg = formatError(error);
+      if (msg.includes('CHANNEL_INVALID') || msg.includes('PEER_ID_INVALID')) {
+        return {
+          ok: false,
+          message: 'Assistant account is not in this group. Use /menu to add it.'
+        };
+      }
+      return {
+        ok: false,
+        message: `Could not access group info: ${msg}`
+      };
+    }
 
     if (!callKey) {
       return {
@@ -878,17 +894,37 @@ export class VoiceAssistant {
           channel: entity
         })
       );
+    try {
+      if (isSupergroupId(chatId)) {
+        const entity = await this.client.getInputEntity(chatId.toString());
+        const result = await this.client.invoke(
+          new Api.channels.GetFullChannel({
+            channel: entity
+          })
+        );
 
       return result.fullChat;
     }
+        return result.fullChat;
+      }
 
     const result = await this.client.invoke(
       new Api.messages.GetFullChat({
         chatId: bigInt(Math.abs(chatId))
       })
     );
+      const result = await this.client.invoke(
+        new Api.messages.GetFullChat({
+          chatId: bigInt(Math.abs(chatId))
+        })
+      );
 
     return result.fullChat;
+      return result.fullChat;
+    } catch (error) {
+      logger.warn('Failed to get full chat', { chatId, error: formatError(error) });
+      throw error;
+    }
   }
 }
 
@@ -1354,7 +1390,7 @@ function canRun(command: string, args: string[]): boolean {
 }
 
 function isSupergroupId(chatId: number): boolean {
-  return chatId <= -1_000_000_000_000;
+  return chatId.toString().startsWith('-100');
 }
 
 function formatError(error: unknown): string {
@@ -1376,3 +1412,4 @@ function forceSessionIpv4Dc(session: StringSession): void {
 
   session.setDC(session.dcId, ipv4Address, 443);
 }
+
