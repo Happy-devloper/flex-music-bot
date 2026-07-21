@@ -22,6 +22,7 @@ import { PyTgCallsVoiceAssistant } from './pytgcalls-voice-assistant.js';
 import { config } from '../config/env.js';
 import { GroupModel } from '../models/index.js';
 import { logger } from '../utils/logger.js';
+import type { VoiceResult, TrackPlaybackEvent } from './types.js';
 
 interface GramTGCallsSession {
   stream(
@@ -73,21 +74,6 @@ type PlayProgressStage =
 
 type PlayProgressFn = (stage: PlayProgressStage) => void | Promise<void>;
 
-interface VoiceResult {
-  ok: boolean;
-  message: string;
-  status?: 'playing' | 'queued' | 'error' | 'info';
-  query?: string;
-  position?: number;
-  durationSeconds?: number;
-  queueId?: string;
-  title?: string;
-  url?: string;
-  ready?: Promise<void>;
-  loopEnabled?: boolean;
-  needsAssistant?: boolean;
-}
-
 interface QueuedTrack {
   id: string;
   query: string;
@@ -109,15 +95,6 @@ interface PlaybackProcess {
   audio: Readable;
   ready: Promise<void>;
   finished: Promise<void>;
-}
-
-export interface TrackPlaybackEvent {
-  chatId: number;
-  queueId: string;
-  query: string;
-  title: string;
-  url?: string;
-  durationSeconds: number;
 }
 
 const PCM_FRAME_BYTES = 960;
@@ -257,7 +234,12 @@ export class VoiceAssistant {
       callKey = await this.getActiveGroupCallKey(chatId);
     } catch (error) {
       const msg = formatError(error);
-      if (msg.includes('CHANNEL_INVALID') || msg.includes('PEER_ID_INVALID')) {
+      if (
+        msg.includes('CHANNEL_INVALID') ||
+        msg.includes('PEER_ID_INVALID') ||
+        msg.includes('input entity') ||
+        msg.includes('Could not find')
+      ) {
         return {
           ok: false,
           message: 'Assistant account is not in this group. It needs to be added.',
