@@ -319,7 +319,12 @@ export function registerBasicCommands(bot: Bot): void {
     try {
       const invite = await ctx.createChatInviteLink({ member_limit: 1, name: 'Music assistant setup' });
       const result = await voiceAssistant.joinGroupByInvite(invite.invite_link);
-      await ctx.reply(result.message);
+      if (result.ok) {
+        await ctx.reply(result.message);
+      } else {
+        // If auto-join fails (expired/permission issue), provide invite link for manual add
+        await ctx.reply(`${result.message}\n\nInvite link: ${invite.invite_link}\n\nYou can add the assistant account using this link or add it manually and grant necessary permissions.`);
+      }
     } catch {
       await ctx.reply('Could not create an assistant invite. Make the bot admin with invite-link permission.');
     }
