@@ -43,3 +43,6 @@ docker compose up --build
 ## Environment
 
 See `.env.example` for all required variables.
+
+## Status
+This bot was deployed and running on a VPS across 10 active Telegram groups for over a month. Currently offline. To run it yourself, see the setup section below.
