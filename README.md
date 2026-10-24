@@ -1,5 +1,7 @@
 # Telegram Music Bot
 
+# Deployed live on AWS EC2 using Docker, MongoDB Atlas, and a custom PO Token provider.
+
 Production-ready Telegram group music bot scaffold built with Node.js 22, TypeScript, grammY, MongoDB, FFmpeg, yt-dlp, Docker, Winston, ESLint, and Prettier.
 
 This project is being generated module by module. Current status:
