@@ -998,10 +998,9 @@ async function prepareAudioFile(query: string): Promise<PreparedAudio> {
       label: 'web-m4a',
       args: [
         ...COMMON_ARGS,
-        '--extractor-args',
-        'youtube:player_client=web',
-        '-f',
-        '140/251/250/249/bestaudio',
+        '--extractor-args', 'youtube:player_client=web',
+        '--extractor-args', 'youtubepot-bgutilhttp:base_url=http://172.17.0.1:4416', // <-- ADD THIS
+        '-f', '140/251/250/249/bestaudio',
         '-o'
       ]
     },
@@ -1009,20 +1008,30 @@ async function prepareAudioFile(query: string): Promise<PreparedAudio> {
       label: 'web-bestaudio',
       args: [
         ...COMMON_ARGS,
-        '--extractor-args',
-        'youtube:player_client=web',
-        '-f',
-        'bestaudio',
+        '--extractor-args', 'youtube:player_client=web',
+        '--extractor-args', 'youtubepot-bgutilhttp:base_url=http://172.17.0.1:4416', // <-- ADD THIS
+        '-f', 'bestaudio',
         '-o'
       ]
     },
     {
       label: 'best',
-      args: [...COMMON_ARGS, '--extractor-args', 'youtube:player_client=web', '-f', 'best', '-o']
+      args: [
+        ...COMMON_ARGS, 
+        '--extractor-args', 'youtube:player_client=web', 
+        '--extractor-args', 'youtubepot-bgutilhttp:base_url=http://172.17.0.1:4416', // <-- ADD THIS
+        '-f', 'best', 
+        '-o'
+      ]
     },
     {
       label: 'no-format',
-      args: [...COMMON_ARGS, '--extractor-args', 'youtube:player_client=web', '-o']
+      args: [
+        ...COMMON_ARGS, 
+        '--extractor-args', 'youtube:player_client=web', 
+        '--extractor-args', 'youtubepot-bgutilhttp:base_url=http://172.17.0.1:4416', // <-- ADD THIS
+        '-o'
+      ]
     }
   ];
 
