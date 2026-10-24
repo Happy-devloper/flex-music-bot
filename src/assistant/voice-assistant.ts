@@ -985,8 +985,9 @@ async function prepareAudioFile(query: string): Promise<PreparedAudio> {
     '--no-playlist',
     '--force-ipv4',
 
-    '--js-runtimes',
-    'node',
+    
+'--js-runtimes', 'node',
+'--remote-components', 'ejs:github', 
 
     '--print',
     'after_move:%(title)s\\t%(webpage_url)s'
