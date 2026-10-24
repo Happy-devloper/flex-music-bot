@@ -145,7 +145,7 @@ export function registerBasicCommands(bot: Bot): void {
       });
 
       // Automatic assistant add condition
-      if (!result?.ok && result?.needsAssistant) {
+      if (!result.ok && result.needsAssistant) {
           await progressTracker.clear();
           try {
               const invite = await ctx.createChatInviteLink({ member_limit: 1, name: 'Auto assistant play' });
@@ -157,7 +157,7 @@ export function registerBasicCommands(bot: Bot): void {
                       await progressTracker.show(stage);
                   });
               }
-          } catch (error) {
+          } catch {
               await ctx.reply('Assistant needs to be added to the group first. Use /menu to add it manually if auto-add fails.');
               return;
           }
@@ -170,9 +170,9 @@ export function registerBasicCommands(bot: Bot): void {
 
     await deleteCommandMessage(ctx);
 
-    if (!result?.ok) {
+    if (!result.ok) {
       await progressTracker.clear();
-      await ctx.reply(result?.message ?? 'Could not prepare your song.');
+      await ctx.reply(result.message);
       return;
     }
 
@@ -208,7 +208,7 @@ export function registerBasicCommands(bot: Bot): void {
       position: payload.position,
     });
 
-    if (result?.ok && result.ready) {
+    if (result.ready) {
       void result.ready.finally(() => progressTracker.clear());
     } else {
       await progressTracker.clear();
@@ -570,11 +570,6 @@ export function registerBasicCommands(bot: Bot): void {
     await ctx.answerCallbackQuery('This song has finished.');
   });
 
-  // Previous button (informative)
-  bot.callbackQuery('music:previous', async (ctx) => {
-    await ctx.answerCallbackQuery('Previous track is not supported yet.');
-  });
-
   /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
      Voice assistant events
      - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -644,7 +639,7 @@ export function registerBasicCommands(bot: Bot): void {
 
 function buildNowPlayingMessage(payload: PlaybackPanelPayload): string {
   const title = getLinkedTitle(truncateTitle(payload.title ?? payload.message ?? 'Unknown Track'), payload.url);
-  const duration = payload.durationSeconds ? `${formatDuration(payload.durationSeconds)}` : '--:--';
+  const duration = payload.durationSeconds ? formatDuration(payload.durationSeconds) : '--:--';
   const requester = formatRequester(payload.requester);
   return [
     '♫ <b>NOW PLAYING</b>',
@@ -738,7 +733,9 @@ function truncateTitle(title: string): string {
 function formatRequester(user?: Context['from']): string {
   if (!user) return '⊚ <b>Requested by:</b> Unknown';
 
-  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || 'Unknown User';
+  const displayName =
+    [user.first_name, user.last_name].filter(Boolean).join(' ') ||
+    (user.username ?? 'Unknown User');
   const safeName = escapeHtml(displayName);
 
   if (user.username) {
@@ -755,13 +752,14 @@ function formatRequester(user?: Context['from']): string {
 /* ------------------------------------------------------------------ */
 /*  Keyboards                                                          */
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
 function buildPlaybackKeyboard(paused: boolean, loopEnabled = false): InlineKeyboard {
   return new InlineKeyboard()
-  .text('◁', 'music:previous')
-  .text(paused ? '▷' : '❙❙', paused ? 'music:resume' : 'music:pause')
-  .text('↻', 'music:loop')
-  .text('▷▷', 'music:skip')
-  .text('■', 'music:stop');
+    .text('◀', 'music:previous')
+    .text(paused ? '▶' : '❚❚', paused ? 'music:resume' : 'music:pause')
+    .text(loopEnabled ? '↻' : '↺', 'music:loop')
+    .text('▶|', 'music:skip')
+    .text('■', 'music:stop');
 }
 
 function buildStoppedKeyboard(): InlineKeyboard {
@@ -904,19 +902,13 @@ function rememberSongMessage(
 /* ------------------------------------------------------------------ */
 function getThumbnailUrl(url?: string): string | undefined {
   if (!url) return undefined;
-  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  const match = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/.exec(url);
   return match?.[1] ? `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg` : undefined;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Utility: clear / delete messages                                   */
 /* ------------------------------------------------------------------ */
-async function clearMessage(ctx: Context, msg: { chat: { id: number }; message_id: number }): Promise<void> {
-  try {
-    await ctx.api.deleteMessage(msg.chat.id, msg.message_id);
-  } catch { /* ignore */ }
-}
-
 async function deleteCommandMessage(ctx: Context): Promise<void> {
   try {
     await ctx.deleteMessage();
